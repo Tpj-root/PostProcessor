@@ -44,13 +44,15 @@ lua TEST.lua
 ```
 
 
+**Example:**
 
 
-**Example: Generating a Text Report**
+
+**Generating a Text Report**
 
 
 ```
-lua Gen_CSV_File.lua
+lua lua_study/Txt_Report.lua
 
 ```
 
@@ -60,7 +62,7 @@ lua Gen_CSV_File.lua
 
 
 ```
-lua Gen_CSV_File.lua
+lua lua_study/Gen_CSV_File.lua
 
 ```
 
@@ -70,7 +72,7 @@ lua Gen_CSV_File.lua
 
 ```
 
-lua Simple_Text.lua 
+lua lua_study/Simple_Text.lua 
 
 ```
 
