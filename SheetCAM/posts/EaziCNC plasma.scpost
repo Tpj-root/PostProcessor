@@ -1,0 +1,179 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("EaziCNC plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Generic plasma post for machines without THC\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("G04Sxxx pauses\n")
+   ctrl:AppendText("Tool numbers 100 and upwards are plate marker\n")
+   ctrl:AppendText("Plate marker uses M08/M09\n")
+   ctrl:AppendText("Set the markerX,markerY and markerZ values for the marker offset\n")
+   ctrl:AppendText("slowradius - slow down below this radius\n")
+   ctrl:AppendText("slowspeed - minimum percentage to slow down\n")
+end
+
+
+--   created 31/3/08
+--   Based on Mach2 plasma.post
+
+
+
+function OnInit()
+
+   xOff = 0
+   yOff = 0
+   zOff = 0
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G53 G90 G40\n F1\n S500\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+
+   markerX = 1000 -- Plate marker X offset in millimetres
+   markerY = 2000 -- Plate marker Y offset in millimetres
+   markerZ = 3000 -- Plate marker Z offset in millimetres
+
+   slowradius = 10 -- arcs smaller than this will be slowed down
+   slowspeed = 0.25 --minimum speed (0.25 = 25%)
+
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M05 M30\n")
+end
+
+function OnRapid()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", (endX + xOff) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + yOff) * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + zOff) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", (endX + xOff) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + yOff) * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + zOff) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   radius = math.hypot(endX - arcCentreX,endY-arcCentreY)
+   if (radius < slowradius) and (math.abs(arcAngle) > 0.5) then
+      feed = (radius / slowradius)
+      if(feed < slowspeed) then feed = slowspeed end
+      feed = feed * feedRate
+   else
+      feed = feedRate
+   end
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.ModalNumber (" X", (endX + xOff) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + yOff) * scale, "0.0000")
+   post.ModalNumber (" Z", endZ * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feed * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if(tool >100) then
+      post.Text (" M08\n")
+   else
+      if (preheat > 0.001) then
+         post.ModalText (" G00")
+         post.ModalNumber (" Z", cutHeight * scale, "0.0000")
+         post.Text ("\n G04 S")
+         post.Number (preheat,"0.###")
+         post.Eol()
+      end
+      post.ModalText (" G00")
+      post.ModalNumber (" Z", pierceHeight * scale, "0.0000")
+      post.Text ("\n M03\n")
+      if (pierceDelay > 0.001) then
+         post.Text (" G04 S")
+         post.Number (pierceDelay,"0.###")
+         post.Eol()
+      end
+   end
+end
+
+
+function OnPenUp()
+   if(tool >100) then
+      post.Text (" M09\n")
+   else
+      post.Text (" M05\n")
+      if (endDelay > 0) then
+         post.Text (" G04 P")
+         post.Number (endDelay,"0.###")
+         post.Eol()
+      end
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+--   text (" M06 T")
+--   number (tool, "0")
+   post.ModalNumber(" F",feedRate * scale,"0.#")
+   post.Text ("  (", toolName, ")\n")
+   if(tool >100) then
+      xOff = markerX
+      yOff = markerY
+      zOff = markerZ
+   else
+      xOff = 0
+      yOff = 0
+      zOff = 0
+   end
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

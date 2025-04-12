@@ -1,0 +1,300 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText(" DynaMyte Language Generator for DM2400 \n")
+   ctrl:AppendText(" Written by Rex Swensen Aug 2006 (swensenr@optusnet.com.au)\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText(" This is a basic converter.\n")
+   ctrl:AppendText(" Converts Feedrate, Rapid, Move, Arc, PenUp, Drill and Finish\n")
+   ctrl:AppendText(" Output limited to only 900 lines which is the limit of the DM2400 in\n")
+   ctrl:AppendText("  Program Execute Mode\n")
+   ctrl:AppendText(" Spindle on and off set within the post\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("   revision17/7/07\n")
+   ctrl:AppendText("   -Changed to allow inch or metric formats\n")
+   ctrl:AppendText("   revision 26/2/07\n")
+   ctrl:AppendText("   -Removed safety move in finish() event. This is now handled internally\n")
+   ctrl:AppendText("   revision 12/8/07 by Andrew Tuberville (andrewtub@yahoo.com)\n")
+   ctrl:AppendText("   -Fixed problems with moves containing only the Y axis.\n")
+   ctrl:AppendText("   revision 13/8/07 by Andrew Tuberville (andrewtub@yahoo.com)\n")
+   ctrl:AppendText("   -Added Z axis rapid and fixed arc scaling from 000.0000 to 000.000\n")
+   ctrl:AppendText("   revision 17/9/07 by Andrew Tuberville (andrewtub@yahoo.com)\n")
+   ctrl:AppendText("-modified the toolchange sequance (see toolchange function)\n")
+   ctrl:AppendText("    -fixed all of the dead code mainly pertaining to the feedrates.\n")
+   ctrl:AppendText(" -formatted most text output to comply with DynaCode standards.\n")
+end
+
+
+
+function OnInit()
+   post.SetCommentChars ("();", "[]:")  --make sure ( and ) characters do not appear in system text
+
+   if(scale == metric) then
+      post.Text (" START MM  01") post.Eol()
+      numFormat = "000.000"
+      feedScale = 1/10
+   else
+      post.Text (" START INS 01") post.Eol()
+      numFormat = "00.0000"
+      feedScale = scale
+   end
+   post.Text (" SETUP >zcxyu") post.Eol()
+   toolOffset = 0                
+   xdone = 0
+   samex = 0
+   samey = 0
+   samez = 0
+   initpass = 1
+
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.1 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   post.Number (lineNumber, "000")
+   lineNumber = lineNumber + 1
+end
+
+function OnFinish()
+   post.Text (" SPINDLE OFF ") post.Eol()
+   post.Text (" END         ") post.Eol()
+end
+
+function OnRapid()
+   if (endX <0) then
+      ex = -endX
+      xsign = " GOfX-"
+   else
+      ex = endX
+      xsign = " GOfX "
+   end
+   if (endY <0) then
+      ey = -endY
+      ysign = " GOfY-"
+   else
+      ey = endY
+      ysign = " GOfY "
+   end
+   if (endZ <0) then
+      ez = -endZ
+      zsign = " GOfZ-"
+   else
+      ez = endZ
+      zsign = " GOfZ "
+   end
+   post.ModalNumber (xsign, ex * scale, numFormat) post.Eol()
+   post.ModalNumber (ysign, ey * scale, numFormat) post.Eol()
+   post.ModalNumber (zsign, ez * scale, numFormat) post.Eol()
+  end
+
+function OnMove()
+   if (lineNumber >= 900) then
+      post.Error("ERROR - Number of Statements exceeds 900 limit of DM2400 controller")
+   end
+
+  samex = 0
+  samey = 0
+  samez = 0
+  if (currentX == endX) then
+    samex = 1
+  end
+  if (currentY == endY) then
+    samey = 1
+  end
+  if (currentZ == endZ) then
+    samez = 1
+  end
+  if (samez == 0) then
+       post.ModalNumber (" FR   Z =", plungeRate * feedScale, "00.0") post.Eol()
+       post.Text (" GO Z")
+       if (endZ < 0) then
+       post.Text ("-")
+       ez = -endZ
+     else
+       post.Text (" ")
+       ez = endZ
+     end
+     post.Number(ez * scale, numFormat) post.Eol()
+     samex = 0
+  end
+
+  if (samex == 0) then
+       xdone = 1
+       post.ModalNumber (" FR  XY =", feedRate * feedScale, "00.0") post.Eol()
+       post.Text (" GO X")
+    if (endX < 0) then
+       ex = -endX
+       post.Text ("-")
+     else
+       ex = endX
+       post.Text (" ")
+    end
+    post.Number (ex * scale, numFormat) post.Eol()
+  else
+    xdone = 0 
+  end
+
+  if (samey == 0) then
+    if (xdone == 0) then
+      post.ModalNumber (" FR  XY =", feedRate * feedScale, "00.0") post.Eol()
+      post.Text (" GO Y")
+     else
+      post.ModalNumber (" FR  XY =", feedRate * feedScale, "00.0") post.Eol()
+      post.Text ("    Y")
+    end
+    if (endY < 0) then
+      post.Text ("-")
+      ey = -endY
+     else
+      ey = endY
+      post.Text (" ")
+    end
+    post.Number (ey * scale, numFormat) post.Eol()
+  end
+end
+
+function OnArc()
+   post.ModalNumber (" FR  XY =", feedRate * feedScale, "00.0") post.Eol()
+   post.Text (" ZERO AT     ") post.Eol()
+      angle = arcAngle * 360.0 / (2 * 3.1415926535897932384626433832795)
+      if (angle > 360.0) then
+         angle = 360.0
+      end
+      if (angle < -360.0) then
+         angle = - 360.0
+      end
+      if (angle < 0) then
+        angle = - angle
+        asign = " GR a "
+      else
+        asign = " GR a-"
+      end
+      if(arcCentreX <0) then
+         post.NonModalNumber ("    X", arcCentreX * scale,numFormat) post.Eol()
+      else
+         post.NonModalNumber ("    X ", arcCentreX * scale,numFormat) post.Eol()
+      end
+      if(arcCentreY <0) then
+         post.NonModalNumber ("    Y", arcCentreY * scale,numFormat) post.Eol()
+      else
+         post.NonModalNumber ("    Y ", arcCentreY * scale,numFormat) post.Eol()
+      end
+      post.NonModalNumber (asign, angle, "000.000") post.Eol()
+   post.Text (" >REF COODS  ") post.Eol()
+   arcfin = 1
+
+end
+
+function OnToolChange()
+   post.Text (" SPINDLE OFF ") post.Eol()
+   post.Text (" Z>ZMAX      ") post.Eol()  --fully raise Z to allow tool change and stop
+   post.Text (" HALT        ") post.Eol()
+   post.Text (" GOfZ 00.0000") post.Eol()  --Z goes to part zero 
+   post.Text (" HALT        ") post.Eol()  --halt to allow for tool zero adjustment
+   post.Text (" GOfZ 00.0100") post.Eol()  --raise tool before turning spindle on
+   post.Text (" SPINDLE ON  ") post.Eol()
+end
+
+function OnPenUp()
+   post.ModalNumber (" GOfZ ", (safeZ + toolOffset) * scale, numFormat) post.Eol()
+end
+
+function OnPenDown()
+end
+
+function OnSpindleCW()
+end
+
+function OnSpindleCCW()
+end
+
+function OnSpindleOff()
+end
+
+
+function OnNewOperation()
+end
+
+function OnSpindleChanged()
+end
+
+function OnFloodOn()
+end
+
+function OnMistOn()
+end
+
+function OnCoolantOff()
+end
+
+function OnDrill()
+
+    post.ModalNumber (" FR   Z =", plungeRate * scale, "00.0")post.Eol()
+
+    post.Text (" DRIL PECK=")
+
+    post.Number (-drillZ/drillPeck, "00") post.Eol()
+
+   
+   if (-drillStart * scale <0) then
+    post.Text ("  ZH=-")
+
+    post.Number (-drillStart * scale , numFormat) post.Eol()
+
+   else
+    post.Text ("  ZH= ")
+
+    post.Number (-drillStart * scale , numFormat) post.Eol()
+
+   end
+
+   if (-drillZ * scale <0) then
+    post.Text ("  Zd=-")
+
+    post.Number (-drillZ * scale , numFormat) post.Eol()
+
+   else
+    post.Text ("  Zd= ")
+
+    post.Number (-drillZ * scale , numFormat) post.Eol()
+
+   end
+
+   if (endX <0) then
+ 
+      ex = -endX
+ 
+      xsign = "  X= -"
+ 
+   else
+
+      ex = endX
+ 
+      xsign = "  X=  "
+
+   end
+
+   
+   if (endY <0) then
+ 
+      ey = -endY
+
+      ysign = "  Y= -"
+ 
+   else
+ 
+      ey = endY
+
+      ysign = "  Y=  "
+
+   end
+
+
+   post.Text (xsign)
+
+   post.Number (ex * scale, numFormat) post.Eol()
+
+   post.Text (ysign)
+
+   post.Number (ey * scale, numFormat) post.Eol()
+
+end

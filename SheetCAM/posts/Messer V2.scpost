@@ -1,0 +1,130 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Messer plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--  modified 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+
+   post.Text ("(Filename: ", fileName, ")\n")
+   post.Text ("(Post processor: ", postName, ")\n")
+   post.Text ("(Date: ", date, ")\n")
+   
+   
+   post.Text ("(HEADER)\n")
+   if(scale == metric) then
+      post.Text ("G71\n") --metric mode
+   else
+      post.Text ("G70\n") --inch mode
+   end
+   post.Text ("#CONTOUR MODE[DEV PATH_DEV=0.008 RELEVANT_PATH=0.004 MAX_ANGLE=45]\n")
+   post.Text ("G90\n")
+   post.Text ("G162\n")
+   post.Text ("G141\n")
+   post.Text ("G237\n")
+   post.Text ("#CS ON [V.E.START_X, V.E.START_Y, 0, 0, 0, V.E.ROTATION]\n")
+   post.Text ("(/HEADER)\n")
+   post.Text ("M190\nM41\nG90\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+end
+
+
+function OnFinish()
+   post.Text ("M02\n")
+   post.Text ("(FOOTER)\n")
+   post.Text ("M30\n")
+   post.Text ("(/FOOTER)\n")
+end
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.Text ("G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   if(currentX == endX and currentY == endY) then return end
+   post.Text ("G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+--   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text ("G03")
+   else
+      post.Text ("G02")
+   end
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+--   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+--[[   if (preheat > 0) then
+      post.Text ("G04 F")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end]]
+   if(toolClass == "MarkerTool") then
+      post.Text ("M09\n")
+   else
+      post.Text ("M07\n")
+   end
+--[[   if (pierceDelay > 0) then
+      post.Text ("G04 F")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end]]
+end
+
+
+function OnPenUp()
+   if(toolClass == "MarkerTool") then
+      post.Text ("M10\n")
+   else
+      post.Text ("M08\n")
+   end
+--[[   if (endDelay > 0) then
+      post.Text ("G04 F")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end]]
+end
+
+
+function OnNewOperation()
+   post.Text ("(Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text("(",commentText,")\n")
+end
+
+function OnToolChange()
+   post.Text("T" .. tool .. "\n")
+end
+
+
+function OnNewPart()
+   post.Text("(Part: ",partName,")\n");
+end

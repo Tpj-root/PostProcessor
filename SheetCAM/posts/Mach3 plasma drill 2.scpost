@@ -1,0 +1,272 @@
+--Drill head offsets from the plasma head
+drillX = 100
+drillY = 10
+
+drillAxis = " A"
+
+--driling starts this height above the work.
+drillSafety = 5
+
+--drill depth is this value plus the material thickness
+drillExtra = 5
+
+--drill peck amount
+drillPeck = 5
+
+--drill retract amount when pecking
+drillRetractAmount = 5
+
+--drill feed rate
+drillFeed = 100
+
+------********* Do not change anything below this line *********------
+
+post.DefineVariable("useDrill",sc.unit0DECPLACE,0,1)
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Mach3 plasma post processor with pierce drilling\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Generic plasma post for machines without THC. Can drill pierce points\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G53 G90 G91.1 G40\n F1\n S500\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   curZ = " Z"
+   useDrill = 1
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M05 M30\n")
+end
+
+function OnRapid()
+--   if(endZ < currentZ and endZ == pierceHeight and curZ == " Z" and useDrill == 1 and toolClass == "PlasmaTool") then
+--      DoDrill()
+--   end
+   if(endZ == pierceHeight and toolClass == "PlasmaTool") then
+      return
+   end
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (curZ, endZ * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (curZ, endZ * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", endZ * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if(useDrill == 1) then
+      DoDrill()
+   end
+   if (preheat > 0.001) then
+      post.ModalText (" G00")
+      post.ModalNumber (" Z", cutHeight * scale, "0.0000")
+      post.Text ("\n G04 P")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end
+   post.ModalText (" G00")
+   post.ModalNumber (" Z", pierceHeight * scale, "0.0000")
+   post.Text ("\n M03\n")
+   if (pierceDelay > 0.001) then
+      post.Text (" G04 P")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   post.Text (" M05\n")
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   post.Text (" M06 T")
+   post.Number (tool, "0")
+   post.ModalNumber(" F",feedRate * scale,"0.0###")
+   post.Text ("  (", toolName, ")\n")
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   if toolClass == "PlasmaTool" then
+      OnRapid()
+      OnPenDown()
+         endZ = drillZ
+      OnMove()
+      OnPenUp()
+      endZ = safeZ
+      OnRapid()
+      return
+   end
+   if toolClass == "MarkerTool" then
+      DoDrill()
+      return
+   end
+   local oldX = endX
+   local oldY = endY
+   endX = endX + drillX
+   endY = endY + drillY
+
+   curZ = drillAxis
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+         endZ = depth + buffer
+      end
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+
+   curZ = " Z"
+   endX = oldX
+   endY = oldY
+   endZ = safeZ
+   OnRapid()
+end
+
+
+function DoDrill()
+   local oldX = endX
+   local oldY = endY
+   local oldZ = endZ
+   local oldFeed = feedRate
+   feedRate = drillFeed
+   endX = endX + drillX
+   endY = endY + drillY
+   endZ = safeZ
+   OnRapid()
+   curZ = drillAxis
+   local depth = 0
+   local buffer = plungeSafety
+   local drillZ = -(materialThick + drillExtra)
+   endZ = depth + drillSafety
+   OnRapid()
+   if(drillRetractAmount < buffer) then
+     buffer = drillRetractAmount
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetractAmount
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+         endZ = depth + buffer
+      end
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+      
+   endX = oldX
+   endY = oldY
+   endZ = safeZ
+   curZ = " Z"
+   OnRapid()
+   endZ = oldZ
+   feedRate = oldFeed
+end

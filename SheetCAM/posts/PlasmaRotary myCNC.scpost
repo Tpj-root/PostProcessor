@@ -1,0 +1,177 @@
+--************************************************
+--*** Set these values up to suit your machine ***
+--************************************************
+
+--scriber axis.
+--scriberAxis = "B"
+scriberAxis = "Z"
+
+
+--rotary axis. Normally this would be "A"
+rotaryAxis = "A"
+
+--Number of units for one full revolution of the rotary axis
+--Note: In Mach3 the axis should be defined as linear, not rotary!
+unitsPerRev=360
+
+
+-- Rapids will move the shortest distance to the next cut but may cause machines with limited rotation
+-- to 'wind up'. Set this to 0 to disable optimisation.
+--defaults to 1 if not defined
+optimiseRapids = 1
+
+
+maxRotation = 6
+
+--************************************************
+--***           End of settings                ***
+--************************************************
+
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Post for rotary-plasma plugin and Mach3 with optional engraver\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("M08/M09 turn the engraver on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("Scriber uses any tool number\n")
+end
+
+
+
+
+
+function OnInit()
+
+   offX = 0
+   offY = 0
+   offZ = 0
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G17 G40 G90 G91.1\n")
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   currentZAxis = "Z"
+   lastz = 0
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   endZ = safeZ
+   OnRapid()
+   endX = 0
+   endY = 0
+   offX = 0
+   offY = 0
+   offZ = 0
+   OnRapid()
+   post.ModalText(" G92 A0\n")
+   post.Text ("M30\n")
+   post.TextDirect("%\n")
+end
+
+function OnRapid()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   if(endZ ~= pierceHeight) then
+      post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   end
+   post.ModalNumber (" " .. rotaryAxis, endA, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   post.ModalNumber (" " .. rotaryAxis, endA, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   if(offZ) then
+      post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   end
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" " .. rotaryAxis, endA, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if(toolClass == "MarkerTool") then
+      post.Text ("M72\n")
+   else
+      post.Text ("M71\n")
+   end
+end
+
+function OnPenUp()
+   if(toolClass == "MarkerTool") then
+      post.Text(" M73\n")
+   else
+      post.Text (" M73\n")
+   end
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnToolChange()
+
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end
+
+ignorePierceHeightMove = true
+package.path = sc.Globals:Get().thisDir .. "/plugins/RotaryPlasma/?.lua"
+require("rotaryhelper")

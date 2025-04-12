@@ -1,0 +1,228 @@
+function OnAbout(event) 
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Dynapath conversational\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("uses Dynapath conversational language\n")
+end
+
+
+--post.ForceExtension("ncc")
+
+function Text(txt)
+   post.Text(string.upper(txt))
+end
+
+function OnInit()
+   nolines = true
+   Text("(" .. fileNameOnly ..")\n")
+   nolines = false
+   lineNumber = 2
+   post.SetCommentChars ("$", " ")
+--[[   Text ("(T)Filename: ".. fileName .. "$\n")
+   Text ("(T)Post processor: ".. postName.. "$\n")
+   Text("(T)Date:"..date.." Time:"..time.."$\n")
+   if(scale == metric) then
+      Text ("(T)Units: Metric$\n") --metric mode
+   else
+      Text ("(T)Units: Inches$\n") --inch mode
+   end]]
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   if nolines then return end
+   Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 2
+end
+
+
+function OnFinish()
+   Text ("(9)M30$\n")
+   nolines = true
+   Text("END\n")
+   nolines = false
+end
+
+
+function OnRapid()
+   Text ("(0)")
+   post.ModalText("G0")
+   post.ModalNumber ("X", endX * scale, "0.0###")
+   post.ModalNumber ("Y", endY * scale, "0.0###")
+   post.ModalNumber ("Z", (endZ + toolOffset) * scale, "0.0###")
+   Text("$\n")
+end
+
+function OnMove()
+   Text ("(1)")
+   post.ModalNumber ("X", endX * scale, "0.0###")
+   post.ModalNumber ("Y", endY * scale, "0.0###")
+   post.ModalNumber ("Z", (endZ + toolOffset) * scale, "0.000")
+   post.ModalNumber ("F", feedRate * scale, "0.###")
+   Text("$\n")
+end
+
+function OnArc()
+   Text ("(2)")
+   if(arcAngle <0) then
+      post.ModalText ("D1")
+   else
+      post.ModalText ("D0")
+   end
+   post.NonModalNumber ("X", endX * scale, "0.0###")
+   post.NonModalNumber ("Y", endY * scale, "0.0###")
+   post.ModalNumber ("Z", (endZ + toolOffset) * scale, "0.0###")
+   Text ("I")
+   post.Number (arcCentreX * scale, "0.0###")
+   Text ("J")
+   post.Number (arcCentreY * scale, "0.0###")
+   post.ModalNumber ("F", feedRate * scale, "0.0###")
+   Text("$\n")
+end
+
+
+function OnSpindleCW()
+   Text ("(9)M03")
+   post.ModalNumber ("S", spindleSpeed, "0.##")
+   Text("$\n")
+end
+
+function OnSpindleCCW()
+   Text ("(9)M04")
+   post.ModalNumber ("S", spindleSpeed, "0.##")
+   Text("$\n")
+end
+
+function OnSpindleOff()
+   Text ("(9)M05")
+   Text("$\n")
+end
+
+
+function OnNewOperation()
+--   Text ("(T)", operationName, "$\n")
+end
+
+function OnComment()
+  Text("(T)" .. commentText .. "$\n")
+end
+
+function OnToolChange()
+   Text ("(T)" .. toolName .. "$\n")
+   Text ("(9)M06T")
+   post.Number (tool, "0")
+   Text("$\n")
+end
+
+function OnSpindleChanged()
+end
+
+function OnNewPart()
+--   Text("(T)Part: " .. partName .. "$\n");
+end
+
+
+function OnFloodOn()
+   Text("(9)M08$\n")
+end
+
+function OnMistOn()
+   post.Warning("Mist coolant not supported on this machine")
+end
+
+function OnCoolantOff()
+   Text("(9)M09$\n")
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end
+
+function OnSetFeed()
+--   Text(" (1)")
+--   post.ModalNumber (" F", feedRate * scale, "0.0###")
+--   Text("$\n")
+end
+
+function OnTapStart()
+end
+
+function OnAutoTap()
+   clearance = 1 --tapping clearance height
+
+--move to hole X,Y coordinates
+   OnRapid()
+
+--move to tapping clearance height
+   clearance = clearance + drillStart
+   endZ = clearance
+   OnRapid()
+
+--feed to depth
+   feedRate = tapPitch * underFeed * spindleSpeed
+   OnSetFeed()
+   endZ = drillZ
+   OnMove()
+
+--retract to engage reverse clutch
+   endZ = drillZ + tapTravel
+   feedRate = 10000
+   OnMove()
+
+--feed out
+   feedRate = tapPitch * reverseMult * underFeed * spindleSpeed
+   endZ = tapTravel + clearance
+   OnMove()
+
+--retract to clearance plane
+   endZ = safeZ
+   OnRapid()
+
+end
+
+function OnRigidTap()
+   Text("(T)WARNING: UNTESTED. CHECK TAPPING CODE CAREFULLY$")
+   post.Warning("Check tapping code carefully. This is untested")
+   Text ("(0)")
+   post.ModalText("G8")
+   post.ModalNumber ("X", endX * scale, "0.0###")
+   post.ModalNumber ("Y", endY * scale, "0.0###")
+   post.ModalNumber ("Z", (drillZ + toolOffset) * scale, "0.000")
+   post.ModalNumber ("W", safeZ * scale, "0.0###")
+   post.ModalNumber ("F", tapPitch * scale, "0.###")
+   Text("$\n")
+end
+
+
+function OnTapEnd()
+end

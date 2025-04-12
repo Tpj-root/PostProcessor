@@ -1,0 +1,257 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Bridgeport V2XT post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments marked with ;\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--  revision 3/2/07 
+--  Removed final safety move. This is now done in SheetCam
+
+--   revision 20/10/04
+--   added tool length offsets
+
+--   08-14-04 Corrected sign error in drill section G87 wants depth to be positive to drill down
+--            Added SafeZ offset to drill depth (g87 starts at safez and goes to depth so the 
+--              hole was not full depth unless your safez was 0.0
+--   08-13-04 Added hole drilling section
+--            added tool number greater than 24 warning
+--            added quill retract and rapid to tool change position for tool change
+--   07-21-04 added line breaks and changed numbering for initialization, body, and end sections
+--            changed G20/G21 to G70/G71 for DX32 control 
+--            set feedrate to output Fx.x instead of Fx
+--            changed arc center to absolute mode (center of arc relative to part zero)
+--   Created 07/20/2004 TSE
+
+function OnInit()
+   post.SetCommentChars ("():", ";;;")  --make sure (, ) and : characters are converted to ;
+   ininit = 69
+   increment = 10
+   lineNumber = 10
+   post.Text (" ;Filename: ", fileName, "\n")
+   post.Text (" ;Post processor: ", postName, "\n")
+   post.Text (" ;Date: ", date, "\n")
+   if(scale == metric) then
+      post.Text("G21 ;Units: Metric\n")
+   else
+      post.Text("G20 ;Units: Inches\n")
+   end
+   if(scale == metric) then
+      post.Text (" G71      ; input in metric\n")
+   else
+      post.Text (" G70      ; input in Inches\n")
+   end
+   post.Text (" G75      ; Multiquadrant circle input on\n")
+   post.Text (" G90      ; Absolute Positioning\n")
+   post.Text (" G40      ; Cutter Comp off\n")
+   post.Text (" G72      ; Transformation off\n")
+   post.Text (" G30      ; Turn mirroring off\n")
+   post.Text (" G80      ; Turn off any canned cycle\n")
+   post.Text (" G73 A0.0 ; Rotate the part 0.0 degrees\n")
+   post.Text (" M09      ; Turn coolant off\n")
+   post.Text (" M25      ; Quill to home position (fully retract)\n")
+   post.Text (" F10.0    ; set default feedrate is 10.0 ipm\n")
+   post.Text (" G04Q2.0  ; set default dwell time to 2 seconds\n")
+   post.Text (" G17      ; XY plane select\n")
+   post.Text (" G94      ; feed in units/min\n")
+   BlankReg = 69    -- turn line numbering off
+   post.Text (" \n")     -- insert a blank line in code
+   BlankReg = 0     -- go back to line numbering
+   ininit = 0
+   lineNumber = 100
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   if (BlankReg == 69) then
+      post.Text (";")
+   else
+      if ininit == 69 then
+          post.Text ("N")
+          post.Number (lineNumber, "0000")
+          lineNumber = lineNumber + 2
+      else
+          post.Text ("N")
+          post.Number (lineNumber, "0000")
+          lineNumber = lineNumber + 10
+      end
+   end
+end
+
+function OnFinish()
+   lineNumber = 5000
+   BlankReg = 69    -- turn line numbering off
+   post.Text (" \n")     -- insert a blank line in code
+   BlankReg = 0     -- go back to line numbering
+   post.Text (" G80                   ; Turn off canned cycle\n")
+   post.Text (" M09                   ; turn coolant off\n")
+   post.Text (" M25                   ; Quill to home position\n")
+   post.Text (" G00 X0.0 Y0.0         ; Rapid to part change point\n")
+   post.Text (" M05                   ; Turn Spindle off\n")
+   post.Text (" M02                   ; End program and rewind\n")
+end
+
+function OnRapid()
+   post.Text (" G00")
+   post.Text(" X")
+   post.Number (endX * scale, "0.0000")
+   post.Text(" Y")
+   post.Number (endY * scale, "0.0000")
+   post.Text(" Z")
+   post.Number ((endZ + toolOffset) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.Text (" G01")
+   post.Text(" X")
+   post.Number (endX * scale, "0.0000")
+   post.Text(" Y")
+   post.Number (endY * scale, "0.0000")
+   post.Text(" Z")
+   post.Number ((endZ + toolOffset) * scale, "0.0000")
+   post.Text(" F")
+   post.Number (feedRate * scale, "0.0#####")
+   post.Text(" S")
+   post.Number (spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnArc()
+   if(currentZ == endZ) then
+      if(arcAngle <0) then
+         post.Text (" G03")  --use circ moves
+      else
+         post.Text (" G02")  --use circ moves
+      end
+   else
+      if(arcAngle <0) then
+         post.Text (" G73")  --use helical moves
+      else
+         post.Text (" G72")  --use helical moves
+      end
+   end
+   post.Text(" X")
+   post.Number (endX * scale, "0.0000")
+   post.Text(" Y")
+   post.Number (endY * scale, "0.0000")
+   if(currentZ ~= endZ) then
+      post.Text(" Z")
+      post.Number ((endZ + toolOffset) * scale, "0.0000")
+   end
+   post.Text (" I")
+-- Bridgeport defaults/setup for absolute coordinates which requires
+-- circle center point to be relative to part zero.
+-- number ((arccentrex - currentx) * scale, "0.0000")
+   post.Number (arcCentreX * scale, "0.0000")
+   post.Text (" J")
+-- number ((arccentrey - currenty) * scale, "0.0000")
+   post.Number (arcCentreY * scale, "0.0000")
+   post.Text(" F")
+   post.Number (feedRate * scale, "0.0#####")
+   post.Text(" S")
+   post.Number (spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnSpindleCW()
+   post.Text (" M03")
+   post.Text(" S")
+   post.Number (spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.Text (" M04")
+   post.Text(" S")
+   post.Number (spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnSpindleOff()
+   post.Text (" M05\n")
+end
+
+function OnNewOperation()
+   post.Text (" ;Operation: ", operationName, "\n")
+   ProcessChange = 1
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(" ;",commentText,"\n")
+end
+
+function OnToolChange() 
+-- Bridgeport V2XT/DX32 control only handles 24 tools
+-- and if a tool number over 24 is used it will be reassigned
+-- to the 1-24 number (tool# Mod 24) and will result in the tool 
+-- assignement something like this (you've been warned):
+      -- tool 25 -> tool 1, tool 26 -> tool 2, tool 27 -> tool 3, etc.
+post.Text (" M25            ; Quill to home position (fully retract)\n")
+post.Text (" G00 X0.0 Y0.0  ; Rapid to tool change position\n") 
+post.Text (" M06 T")
+   post.Number (tool, "00")
+   if (tool>24) then
+post.Warning ("WARNING: Tool number greater than 24 used and")
+post.Warning ("will be reassigned when loaded by the Bridgeport")
+post.Warning ("controller to a tool number in the range of 1 to 24")
+   end
+   post.Text ("  ;", toolName, "\n")
+end
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+function OnFloodOn()
+   post.Text(" M08\n")
+end
+
+function OnMistOn()
+  post.Text(" M07\n")
+end
+
+function OnCoolantOff()
+   post.Text(" M09\n")
+end
+
+function OnDrill() -- uses G87 chip break cycle
+if (ProcessChange == 1) then
+  post.Text (" G00 X")
+  post.Number ((endX * scale), "0.0000")
+  post.Text (" Y")
+  post.Number ((endY * scale), "0.0000")
+  post.Text (" Z")
+  post.Number ((safeZ * scale), "0.0000")
+  post.Text ("\n")
+end
+ProcessChange = 0
+post.Text (" G87 X")        -- Drill with chip breaker cycle
+post.Number ((endX * scale),"0.0000")
+post.Text (" Y")
+post.Number ((endY * scale),"0.0000")
+post.Text (" Z")           -- total drill depth
+post.Number ((((drillZ * -1) + safeZ) * scale),"0.0000")      -- change sign of depth and 
+post.Text (" Z")           -- first peck depth (2x peckdepth) -- add safez distance to depth
+post.Number (((drillPeck*2) * scale),"0.0000")
+post.Text (" Z")           -- second and on peck depth
+post.Number ((drillPeck * scale),"0.0000")
+post.Text (" F")           -- drill feedrate
+post.Number ((feedRate * scale),"0.0000")
+post.Text ("\n")
+end
+
+
+

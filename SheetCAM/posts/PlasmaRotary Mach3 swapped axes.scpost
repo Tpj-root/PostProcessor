@@ -1,0 +1,463 @@
+--************************************************
+--*** Set these values up to suit your machine ***
+--************************************************
+
+--this is the distance between each torch reference in MILLIMETRES
+refDistance = 75
+
+--this is the reference feed rate in mm/min
+refFeed = 500
+
+--Put your switch offset value here in MILLIMETRES
+switchOffset = 1.5
+
+--Scriber X,Y,Z offsets in MILLIMETRES. Do not use inches here even if you want inch code
+--Use the special code 'nil' on the Z axis to disable it.
+--In that case no Z values will be output at all while scribing.
+--e.g scriberZ = nil
+--If your scriber has a pneumatic slide and is mounted on the Z axis
+--set scriberZ to the distance between the torch and the scriber with the slide down.
+scriberX = 0
+scriberY = 0
+scriberZ = nil
+
+
+--This code is output before scribing starts.
+--If your scriber needs to stay on you would set this to the code to turn the scriber on.
+--e.g scriberEnable = "M08"
+scriberEnable = nil
+
+--This is an extra delay after the scriber is enabled
+scriberEnableDelay = 0
+
+--This is output at the start of each scribe mark
+--If you don't need this use scriberOn = nil
+scriberOn = "M08"
+
+--This is output at the end of each scribe mark
+--If you don't need this use scriberOff = nil
+scriberOff = "M09"
+
+--This code is output once all scribing is finished.
+--e.g scriberDisable = "M09"
+scriberDisable = nil
+
+
+--scriber vertical axis.
+--Note this is not used if you have set scriberZ = nil
+--If your scriber is attached to a slide on the Z axis this would be:
+--If scriberAxis is not "Z", scriberZ should be 0
+--scriberAxis = "Z"
+scriberAxis = "Z"
+
+--If this value is set to true then use G28 (home) for the Z reference
+--Set it to false for G31 probe
+refHome = true
+
+--rotary axis. Normally this would be "A"
+rotaryAxis = "A"
+
+--Number of units for one full revolution of the rotary axis
+--Note: In Mach3 the axis should be defined as linear, not rotary!
+unitsPerRev=360
+
+--Set this to false if your code does not do a reference cycle
+ignorePierceHeightMove = true
+
+--************************************************
+--***           End of settings                ***
+--************************************************
+
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Post for rotary-plasma plugin and Mach3 with optional engraver\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("M08/M09 turn the engraver on/off\n")
+   ctrl:AppendText("Incremental IJ - set in mach2\n")
+   ctrl:AppendText("The torch is referenced at cut start and every 500mm of movement thereafter\n")
+   ctrl:AppendText("Post variables:\n")
+   ctrl:AppendText("refDistance - set the distance between each reference\n")
+   ctrl:AppendText("refFeed - set the feed rate when referencing\n")
+   ctrl:AppendText("switchOffset - set your net switch offset amount \n")
+   ctrl:AppendText("Scriber uses any tool number\n")
+end
+
+
+
+--   created 1/1/06
+--   Based on plasma1.post
+
+
+--  Modified 21/6/2010
+--  added option for 'nil' plate marker z
+--  Added support for plate marker tool type as well as tool number based plate marker
+
+-- Modified 4/11/2010
+-- Added: Reference the torch on the first pen down if the plate marker is the first tool used.
+
+
+post.DefineVariable("refDistance",sc.unitLINEAR,0,1e17)
+post.DefineVariable("refFeed",sc.unitFEED,0,1e17)
+post.DefineVariable("switchOffset",sc.unitLINEAR,-1e17,1e17)
+
+function OnInit()
+
+   offX = 0
+   offY = 0
+   offZ = 0
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" F1\n G53 G90 G40\n")
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   firstRef = true
+   currentZAxis = "Z"
+
+   dist = 9999999
+   lastz = 0
+   lastToolClass = "PlasmaTool"
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   if lastToolClass ~= "PlasmaTool" then
+      SelectPlasma()
+   end
+   endZ = safeZ
+   OnRapid()
+   endX = 0
+   endY = 0
+   offX = 0
+   offY = 0
+   offZ = 0
+   OnRapid()
+   post.Text (" M05 M30\n")
+end
+
+function OnRapid()
+   local len = math.hypot((endX + offX)-currentX , (endY + offY)-currentY)
+   dist = dist + len
+   RapidXY(endX, endY)
+   if(offZ and not firstRef) then
+      post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   end
+   post.ModalNumber (" " .. rotaryAxis, endA, "0.0000")
+   post.Eol()
+end
+
+function RapidXY(x,y)
+   post.ModalText (" G00")
+   post.ModalNumber (" Y", (x + offX) * scale, "0.0000")
+   if(endX < 1e17) then
+      post.ModalNumber (" X", -(y + offY) * scale, "0.0000")
+   end
+end
+
+
+function OnMove()
+   local len = math.hypot(endX - currentX , endY - currentY)
+   dist = dist + len
+   post.ModalText (" G01")
+   post.ModalNumber (" Y", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" X", -(endY + offY) * scale, "0.0000")
+   if offZ then
+      post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   end
+   post.ModalNumber (" " .. rotaryAxis, endA, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   local radius = math.hypot(currentX - arcCentreX, currentY - arcCentreY)
+   dist = dist + radius * math.abs(arcAngle)
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.ModalNumber (" Y", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" X", -(endY + offY) * scale, "0.0000")
+   if(offZ) then
+      post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   end
+   post.Text (" J")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" I")
+   post.Number (-(arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" " .. rotaryAxis, endA, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function MoveZ(z)
+   if not offZ then return end
+   post.ModalText (" G00")
+   post.Text(" " .. currentZAxis)
+   post.Number ((z + offZ)  * scale, "0.0000")
+   post.Eol()
+end
+
+function SelectMarker(toolChange)
+   if scriberZ then
+      local clearZ = sc.QueryDll(qryGETSAFEZ, 0, dllId)
+      if(scriberAxis == "Z") then
+         if firstRef then
+            if toolChange then return end
+            Reference()
+            post.ModalText (" G00")
+            post.Text(" Z")
+            post.Number ((clearZ + safeZ)  * scale, "0.0000")
+            post.Eol()
+         end
+         if(scriberZ > 0) then
+            offZ = scriberZ
+            currentZAxis = scriberAxis
+            MoveZ(rotaryVals.cz);
+         end
+      else
+         offZ = scriberZ
+         currentZAxis = scriberAxis
+         MoveZ(clearZ + safeZ);
+      end
+   end
+   if scriberEnable then
+      post.Text(" ", scriberEnable, "\n")
+   end
+   if scriberEnableDelay > 0 then
+      post.Text (" G04 P")
+      post.Number (scriberEnableDelay,"0.###")
+      post.Eol()
+   end
+
+   offY = scriberX
+   offX = scriberY
+   offZ = scriberZ
+   currentZAxis = scriberAxis
+   if not toolChange then
+      RapidXY(rotaryVals.cx, rotaryVals.cy)
+   end
+   lastToolClass = toolClass
+end
+
+function SelectPlasma(toolChange)
+   if scriberDisable then
+      post.Text(" ", scriberDisable, "\n")
+   end
+   if scriberAxis and scriberAxis == "Z" and scriberZ and scriberZ < 0 then
+      if toolChange then return end
+      post.ModalText (" G00")
+      local matZ = sc.QueryDll(qryCHKEND, endY, dllId)
+      post.ModalNumber (" Z", matZ  * scale, "0.0000")
+      post.Eol()
+   end
+   offX = 0
+   offY = 0
+   offZ = 0
+   currentZAxis = "Z"
+   if not toolChange then
+      RapidXY(currentX, currentY)
+   end
+   lastToolClass = toolClass
+end
+
+function OnPenDown()
+   sc.QueryDll(qryRAPIDY, endY, dllId)
+   local matZ = sc.QueryDll(qryCHKEND, endY, dllId)
+
+
+   if(toolClass ~= lastToolClass) then
+      if toolClass == "MarkerTool" then
+         SelectMarker(false)
+      elseif toolClass == "PlasmaTool" then
+         SelectPlasma(false)
+      end
+   end
+
+   if toolClass == "MarkerTool"  then
+      firstRef = false
+      if scriberAxis then
+         MoveZ(matZ + cutHeight)
+      end
+      if scriberOn then
+         post.Text(" ", scriberOn, "\n")
+      end
+   elseif toolClass == "PlasmaTool" then
+      if(dist >= refDistance) then
+         dist = 0
+         Reference();
+      end
+      post.ModalText (" G00")
+      post.Text(" Z")
+      post.Number ((matZ + pierceHeight)  * scale, "0.0000")
+      post.Eol()
+      if (preheat > 0) then
+         post.Text ("\n G04 P")
+         post.Number (preheat,"0.###")
+         post.Eol()
+      end
+      post.Text (" M03\n")
+   end
+
+--[[
+
+   if(toolClass == "MarkerTool") or tool > 99 then
+      if (firstRef) then
+         Reference()
+         post.ModalText (" G00")
+         post.Text(" Z")
+         local clearZ = sc.QueryDll(qryGETSAFEZ, 0, dllId)
+         post.Number ((clearZ + safeZ)  * scale, "0.0000")
+         post.Eol()
+         offX = scriberX
+         offY = scriberY
+         offZ = scriberZ
+         if(offZ and offZ > 0) then
+            post.ModalNumber (" " .. currentZAxis, (rotaryVals.cz + offZ)  * scale, "0.0000")
+            post.Eol()
+         end
+         post.ModalNumber (" X", (rotaryVals.cx + offX) * scale, "0.0000")
+         post.ModalNumber (" Y", (rotaryVals.cy + offY) * scale, "0.0000")
+         post.Eol()
+      end
+      if (offZ) then
+         post.ModalNumber (" " .. currentZAxis, (rotaryVals.cz + offZ)  * scale, "0.0000")
+         post.Eol()
+      end
+      post.Text(" M08\n")
+   else
+      if(dist >= refDistance) then
+         dist = 0
+         Reference();
+      end
+      post.ModalText (" G00")
+      post.Text(" Z")
+      post.Number ((matZ + pierceHeight)  * scale, "0.0000")
+      post.Eol()
+      if (preheat > 0) then
+         post.Text ("\n G04 P")
+         post.Number (preheat,"0.###")
+         post.Eol()
+      end
+      post.Text ("\n M03\n")
+   end
+   ]]
+   if (pierceDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function Reference()
+   firstRef = false
+   local matZ = sc.QueryDll(qryCHKEND, endY, dllId)
+   if (refHome) then
+      post.ModalText(" G28.1 Z")
+      post.Number((3 + matZ) * scale, "0.00")
+   else
+      post.ModalText(" G31 Z -100")
+   end
+   post.ModalNumber (" F", refFeed * scale, "0.0###")
+   post.Eol()
+   post.ModalText(" G92 Z")
+   post.Number ((matZ - switchOffset) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnPenUp()
+   if toolClass == "MarkerTool"  then
+      if scriberOn then
+         post.Text(" ", scriberOff, "\n")
+      end
+   elseif toolClass == "PlasmaTool" then
+      post.Text (" M05\n")
+   end
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnToolChange()
+   if not firstRef then
+      local clearZ = sc.QueryDll(qryGETSAFEZ, 0, dllId)
+      MoveZ(clearZ + safeZ)
+   end
+
+   if(toolClass ~= lastToolClass) then
+      if toolClass == "MarkerTool" then
+         SelectMarker(true)
+      elseif toolClass == "PlasmaTool" then
+         SelectPlasma(true)
+      end
+   end
+--[[
+--post.Text(">  " .. endX .. " " .. endY .. " " .. endZ .. "\n")
+    if (toolClass == "MarkerTool"  or tool > 99 ) then
+         if(scriberAxis and scriberAxis ~= currentZAxis) then
+            endZ = safeZ
+            OnRapid()
+            currentZAxis = scriberAxis
+         end
+         if(firstRef ~= true) then
+            offX = scriberX
+            offY = scriberY
+            offZ = scriberZ
+         end
+         if not scriberAxis then offZ = nil
+    else
+         if(scriberAxis and scriberAxis == currentZAxis) then
+            endZ = safeZ
+            OnRapid()
+            currentZAxis = "Z"
+         end
+         offX = 0
+         offY = 0
+         offZ = 0
+    end
+]]
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end
+
+package.path = sc.Globals:Get().thisDir .. "/plugins/RotaryPlasma/?.lua"
+require("rotaryhelper")

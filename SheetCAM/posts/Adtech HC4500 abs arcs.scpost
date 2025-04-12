@@ -1,0 +1,142 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Post for Adtech HC6500 with plasma/flame\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   revision 7/10/05
+--   Added new arc handling
+
+--   revision 11/7/05
+--   Moved torch to cut height when preheating
+--   Added dummy spindle speed to prevent Mach2 throwing a zero spindle speed error
+
+--   revision 9/10/04
+--   Added preheat
+
+--   revision 28/6/04
+--   Replaced startx,y,z with currentx,y,z
+
+--   created 28/5/04
+--   Based on Mach2 metric.post
+
+
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   post.Text (" G90 G40 G28\n")
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   curLeadin = 0
+end
+
+--[[function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end]]
+
+
+function OnFinish()
+   post.Text (" G28\n")
+end
+
+function OnRapid()
+   if(math.hypot(currentX - endX, currentY - endY) < 0.001) then return end
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+
+function OnMove()
+   if(math.hypot(currentX - endX, currentY - endY) < 0.001) then return end
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+--   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY) * scale, "0.0000")
+--   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if (preheat > 0.001) then
+      if toolClass == "FlameTool" then
+         post.Text(" M24\n")
+      end
+      post.Text (" G04 L")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end
+   if toolClass == "FlameTool" then
+      post.Text(" M25\n")
+   end
+   post.Text (" M07\n")
+   if (pierceDelay > 0.001) then
+      post.Text (" G04 L")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   post.Text (" M08\n")
+   if (endDelay > 0) then
+      post.Text (" G04 L")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

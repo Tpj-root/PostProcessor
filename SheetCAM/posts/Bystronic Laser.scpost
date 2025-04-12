@@ -1,0 +1,123 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Bystronic Laser post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Laser post for ByFlex 3015\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("M01 stops and M04/M05 turn the laser on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+post.ForceExtension("lcc")
+post.SetOptions(post.ARC_SEGMENTS)
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.TextDirect ("%\n")
+   post.TextDirect ("(Filename: ", fileName, ")\n")
+   post.TextDirect ("(Post processor: ", postName, ")\n")
+   post.TextDirect ("(Date: ", date, ")\n")
+   post.Text (" G29 X3000 Y1500 P1 H1\n")
+   post.Text (" G52 X0 Y0 L1 O0\n")
+   post.Text (" G99\n")
+   post.Text (" G28 X500 Y500 L1 P1\n")
+   post.Text (" M40\n")
+   bigArcs = 0 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   pendown = false
+   needEol = false
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   if(needEol) then
+      post.Text (" M05")
+      post.Eol()
+      needEol = false
+   end
+   CheckEol()
+   post.Text (" G98\n")
+   post.TextDirect ("&\n")
+
+end
+
+function CheckEol()
+   if(needEol) then
+      post.Eol()
+      needEol = false
+   end
+end
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.00001) then return end
+   CheckEol()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX, "0.##")
+   post.ModalNumber (" Y", endY, "0.##")
+   needEol = true
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.00001) then return end
+   CheckEol()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX, "0.##")
+   post.ModalNumber (" Y", endY, "0.##")
+   if(pendown) then
+      post.Text (" M04")
+      pendown = false
+   end
+   needEol = true
+end
+
+function OnArc()
+   CheckEol()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX, "0.##")
+   post.NonModalNumber (" Y", endY, "0.##")
+   post.Text (" I")
+   post.Number ((arcCentreX), "0.##")
+   post.Text (" J")
+   post.Number ((arcCentreY), "0.##")
+   if(pendown) then
+      post.Text (" M04")
+      pendown = false
+   end
+   needEol = true
+end
+
+
+function OnPenDown()
+   CheckEol()
+   post.Text (" M01\n")
+   pendown = true
+end
+
+
+function OnPenUp()
+   post.Text (" M05 \n")
+   needEol = false;
+end
+
+function OnComment()
+   CheckEol()
+  post.TextDirect("(",commentText,")\n")
+end
+
+function OnNewPart()
+--   CheckEol()
+--   post.TextDirect("(Part: ",partName,")\n");
+
+end
+

@@ -1,0 +1,281 @@
+--Set this to the distance between the soft touch sensor and the torch in MILLIMETRES
+touchoffOffset=-30
+
+--this is the distance between each torch reference in MILLIMETRES
+refDistance = 0
+
+---------------End of config options --------------
+
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Mach4 plasma Post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("Intergrated Mach4 THC\n")
+   ctrl:AppendText("No Z Moves\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+
+--   created 1/18/19
+--   Based on Mach4 Plasma.post
+
+
+post.DefineCustomToolParam("PlasmaTool", "THC Delay", "thcDelay", sc.unitTIME, 2, 0, 10)
+post.DefineCustomToolParam("PlasmaTool", "Preset amps", "amps", sc.unit0DECPLACE, 45, 10, 200)
+post.DefineCustomToolParam("PlasmaTool", "Preset volts", "volts", sc.unit0DECPLACE, 137, 100, 200)
+post.DefineCustomToolParam("PlasmaTool", "Air pressure", "pressure", sc.unit0DECPLACE, 71, 50, 100)
+post.DefineCustomToolParam("PlasmaTool", "Tool type", "toolType", sc.unit0DECPLACE, 3, 2, 4)
+post.DefineCustomToolParam("PlasmaTool", "Thickness", "thickness", sc.unitLINEAR, 0, 0, 200)
+post.DefineVariable("refDistance",sc.unitLINEAR,0,1e17)
+
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G90 G80 G40\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   dist = 9999999
+   
+   
+   thcDelay = -1
+   amps = -1
+   volts = -1
+   pressure = -1
+   toolType = -1
+   thickness = -1
+   params={}
+   referenced = false
+end
+
+function OnNewLine()
+--[[   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10]]
+end
+
+
+function OnFinish()
+   post.Text (" M05 M30\n")
+end
+
+function OnRapid()
+   local len = math.hypot(endX - currentX , endY - currentY)
+   dist = dist + len
+   if(endZ < safeZ) then return end
+   post.Text (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", endZ * scale, "0.0000")
+   post.Eol()
+
+--[[
+   if endZ == pierceHeight and endZ ~= currentZ then
+      post.ModalText (" G00")
+      post.ModalNumber (" X", (endX + touchoffOffset) * scale, "0.0000")
+      post.ModalNumber (" Y", endY * scale, "0.0000")
+      post.Eol()
+      post.Text(" #130=0 (THC Off)\n")
+      post.Text(" M12\n")
+      post.ModalText("")
+   end
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   if(endZ == pierceHeight) then
+      post.Text(" Z#100")
+   else
+      post.ModalNumber (" Z", endZ * scale, "0.0000")
+   end
+   post.Eol()
+]]
+end
+
+function OnMove()
+   local len = math.hypot(endX - currentX , endY - currentY)
+   dist = dist + len
+   post.Text (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   if(endZ == cutHeight and endZ ~= currentZ) then
+      post.Text(" Z#120")
+   else
+      post.ModalNumber (" Z", endZ * scale, "0.0000")
+   end
+   post.ModalNumber (" F", feedRate * scale, "0.0##")
+   post.Eol()
+end
+
+function OnArc()
+   local radius = math.hypot(currentX - arcCentreX, currentY - arcCentreY)
+   dist = dist + radius * math.abs(arcAngle)
+   if(arcAngle <0) then
+      post.Text (" G03")
+   else
+      post.Text (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", endZ * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function DoReference(goPierce)
+   dist = 0
+   post.Text (" G00")
+   post.ModalNumber (" X", (endX + touchoffOffset) * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+   post.Text(" #130=0 (THC Off)\n")
+   post.Text(" M12\n")
+   post.Text (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   if(goPierce) then
+      post.Text(" Z#100")
+   end
+   post.Eol()
+   referenced = true
+end
+
+function OnPenDown()
+   if(toolClass == "MarkerTool") then
+      if(not referenced) then
+         DoReference(false)
+      end
+      post.Text(" M07\n")
+--[[      if (pierceDelay > 0.001) then
+         post.Text (" G04 P#110\n")
+      end]]
+      return
+   end
+   if(dist >= refDistance) then
+      DoReference(true)
+   else
+      post.Text (" G00")
+      post.ModalNumber (" X", endX * scale, "0.0000")
+      post.ModalNumber (" Y", endY * scale, "0.0000")
+      post.Eol()
+      post.Text(" #130=0 (THC Off)\n")
+      post.Text(" Z#100")
+      post.Eol()
+   end
+
+   if (preheat > 0.001) then
+      post.Text (" G04 P")
+      post.Number (preheat,"0.0##")
+      post.Eol()
+   end
+--   modaltext (" G00")
+--   modalnumber (" Z", pierceheight * scale, "0.0000")
+   post.Text (" M03\n")
+   if (pierceDelay > 0.001) then
+      post.Text (" G04 P#110\n")
+   end
+end
+
+
+function OnPenUp()
+   if(toolClass == "MarkerTool") then
+      post.Text(" M09\n")
+   else
+      post.Text (" M05\n")
+   end
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.0##")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function DoValue(param, var, comment)
+   if(var < 0) then return end
+   if(params[param] == var) then
+      return
+   end
+   params[param] = var
+   post.Text(" #", param, "=", var, " (", comment, ")\n")
+end
+
+function OnToolChange()
+   if(toolClass ~= "MarkerTool") then
+      DoValue(100, pierceHeight * scale, "Pierce Height")
+      DoValue(110, pierceDelay, "Pierce Delay s")
+      DoValue(120, cutHeight * scale, "Cut Height")
+      post.Text(" #130=0 (THC off)\n")
+      DoValue(140, thcDelay, "THC Delay s")
+      DoValue(150, amps, "Pre-set Amps")
+      DoValue(160, volts, "Pre-set Volts")
+      DoValue(170, pressure, "Air Pressure")
+      post.Text(" #180=1 (Cut mode)\n")
+   --   DoValue(180, cutMode, "Cut Mode")
+      if(thickness <= 0) then
+         thickness = materialThick
+      end
+      DoValue(190, thickness * scale, "Material Thickness")
+   end
+   local t = 2
+   if toolClass == "MarkerTool" then
+      t = 0
+   elseif toolType then
+      t = toolType
+   end
+   post.Text (" (", toolName, ")\n")
+   post.Text (" T")
+   post.Number (t, "0")
+   post.Text(" M06\n")
+   --modalnumber(" F",feedrate * scale,"0.#")
+   post.Text (" G43 H", t, "\n")
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   if(operationClass == "DrillOperation" and toolClass == "PlasmaTool") then
+      DoReference(true)
+      post.Text(" M20\n")
+      post.Text (" G00")
+      post.NonModalNumber (" Z", safeZ * scale, "0.0000")
+      post.Eol()
+      return
+   end
+
+   OnPenDown()
+--   endZ = drillZ
+--   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

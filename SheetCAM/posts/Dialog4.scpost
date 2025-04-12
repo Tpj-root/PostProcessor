@@ -1,0 +1,296 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("G-code post processor for Deckel Dialog 4\n")
+   ctrl:AppendText("No comments\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--  Created 2008-09-10
+--  based on minimum g-code_non_modal.post
+
+function OnNewLine()
+end
+
+function linenumber()
+   lineNumber = lineNumber + 1
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+end
+
+function OnInit()
+   current_feedRate=0
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system 1text
+   if(scale == metric) then
+     post.Text ("&%11\n") --metric mode, program number
+     post.Text ("T1 R3 A L-6.383 A\n")        --    6mm NC forbor
+     post.Text ("T3 R1.5 A L-88.885 A\n")     --    3mm 2-flute HSS end mill
+     post.Text ("T6 R3 A L-90.427 A\n")       --    6mm 2-flute HM end mill
+     post.Text ("T8 R4 A L-85.076 A\n")       --    8mm 2-flute HM end mill
+     post.Text ("T10 R5 A L-67.060 A\n")      --   10mm long 3-flute HSS end mill
+     post.Text ("T12 R6 A L-77.819 A\n")      --   12mm 2-flute HSS end mill
+     post.Text ("T15 R0.75 A L-113.724 A\n")  --  1.5mm 3-flute HSS end mill
+     post.Text ("T21 R1.05 A L-79.418 A\n")   --  2.1mm HSS drill
+     post.Text ("T22 R1.1 A L-35.5 A\n")      --  2.1mm HSS drill
+     post.Text ("T25 R1.25 A L-79.780 A\n")   --  2.5mm HSS drill
+     post.Text ("T31 R1.575 A L-72.068 A\n")  -- 3.15mm stikkel carbide
+     post.Text ("T33 R1.5 A L-86.734 A\n")    --    3mm 3 flute carbide router
+     post.Text ("T50 R25 A L-101.529 A\n")    --   50mm knife head
+     post.Text ("T51 R25 A L-97.150 A\n")     --   50mm disc blade
+     post.Text ("T52 R2.55 A L32.051 A\n")    --  5.1mm HSS drill
+     post.Text ("T61 R3 A L-66.696 A\n")      --    6mm 2-flute Hss end mill - new 090301
+     post.Text ("T68 R3.4 A L-34.378 A\n")    --  6.8mm drill HSS
+     post.Text ("T80 R25 A L-39.383 A\n")     --   80mm disc blade, 1mm thick
+     post.Text ("T81 R4.0 A L-65.334 A\n")     --   8mm traefraeser
+     post.Text ("T85 R4.25 A L58.267 A\n")    --  8.5mm drill CO
+     post.Text ("T99 R1.5 A L-83.15 A\n")     --    3mm reifer HSS
+     post.Text ("T110 R5.5 A L77.249 A\n")    --   11mm drill HSS
+     post.Text ("T125 R1.25 A L-97.500 A\n")  --  2.5mm drill HSS
+     post.Text ("T130 R1.5 A L-88.885 A\n")   --    3mm 2-flute HSS end mill
+     post.Text ("T202 R1   A L-80.719 A\n")   --    2mm 3-flute HSS end mill for plastics
+     post.Text ("T203 R1.5 A L-88.901 A\n")   --    3mm 2-flute HSS end mill for plastics
+     post.Text ("T206 R3.0 A L-89.411 A\n")   --    6mm 2-flute HSS end mill for plastics
+     post.Text ("T210 R5.0 A L-89.540 A\n")   --   10mm 2-flute HSS end mill for plastics
+     post.Text ("T231 R1.5 A L-79.599 A\n")   --    3mm 3-flute HM end mill for plastics
+     post.Text ("T232 R16.25 A L-90.033 A\n") -- 32.5mm HSS T mill, 6mm thick for plastics
+     post.Text ("%\n")
+     post.Text ("(&%11 /000000)\n") -- program number
+   else
+     post.Text ("$%10\n") --imperial mode
+     post.Text ("%\n")
+     post.Text ("($%10 /000000)\n") -- program number
+   end
+   linenumber()
+   post.Text (" G64\n") -- smooth transitions (as opposed to G60, exact stop)
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnFinish()
+   linenumber()
+   post.Text (" M9\n") 
+   linenumber()
+   post.Text (" G0 Z50\n")
+   linenumber()
+   post.Text (" M30\n")
+   post.Text ("?\n")
+   post.Text ("0000\n")
+end
+
+
+function OnRapid()
+   linenumber()
+   post.Text (" G0")
+   post.ModalNumber (" X", endX * scale, "0.000")
+   post.ModalNumber (" Y", endY * scale, "0.000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.000")
+   post.Eol()
+end
+
+function OnMove()
+   OnSetFeed()
+   linenumber()
+   post.Text (" G1")
+   post.ModalNumber (" X", endX * scale, "0.000")
+   post.ModalNumber (" Y", endY * scale, "0.000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.000")
+   post.Eol()
+end
+
+function OnArc()
+   OnSetFeed()
+   linenumber()
+   if(arcAngle <0) then
+      post.Text (" G3")
+   else
+      post.Text (" G2")
+   end
+   post.ModalNumber (" X", endX * scale, "0.000")
+   post.ModalNumber (" Y", endY * scale, "0.000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.000")
+   post.Eol()
+end
+
+
+function OnSpindleCW()
+--   linenumber()
+--   text (" M03")
+--   eol()
+end
+
+function OnSpindleCCW()
+--   linenumber()
+--   text (" M4")
+--   eol()
+end
+
+function OnSpindleOff()
+--   linenumber()
+--   text (" M5\n")
+end
+
+
+function OnNewOperation()
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnToolChange()
+   StoreFeedrate=current_feedRate
+   linenumber()
+   post.Text (" T0\n") -- cancel tool length offset
+   endZ=99 -- has to be different from 100 due to bug in sheetcam
+   OnRapid()
+--   linenumber()
+--   post.Text (" G00 Z50 M7 S+0\n") -- make room for tool change
+   linenumber()
+   post.Text (" G17 T")
+   post.Number (tool, "0")
+   post.Eol()
+   linenumber()
+   post.NonModalNumber (" S", spindleSpeed, "+0")
+   post.Eol()
+   feedRate=900
+   OnSetFeed()
+   endZ=50
+   OnMove()
+   feedRate=StoreFeedrate
+   OnSetFeed()
+end
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+function OnNewPart()
+end
+
+function OnFloodOn()
+   linenumber()
+   post.Text(" M8\n")
+end
+
+function OnMistOn()
+   linenumber()
+   post.Text(" M8\n")   -- no specific command for mist
+end
+
+function OnCoolantOff()
+   linenumber()
+   post.Text(" M9\n")
+end
+
+function OnDrill()
+   endZ=50
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+  end
+   while depth > drillZ do
+      endZ = depth + buffer
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end
+
+function OnSetFeed()
+   if ((current_feedRate>feedRate) or (current_feedRate<feedRate)) then
+     linenumber()
+     post.NonModalNumber (" F", feedRate * scale, "0")
+     post.Eol()
+   end
+   current_feedRate=feedRate
+end
+
+function OnTapStart()
+--   text(" M49\n") --disable FRO
+--   text(" G95\n") --feed per rev
+end
+
+function OnAutoTap()
+   clearance = 1 --tapping clearance height
+
+--move to hole X,Y coordinates
+   OnRapid()
+
+--move to tapping clearance height
+   clearance = clearance + drillStart
+   endZ = clearance
+   OnRapid()
+
+--feed to depth
+   feedRate = tapPitch * underFeed
+   OnSetFeed()
+   endZ = drillZ
+   OnMove()
+
+--retract to engage reverse clutch
+   endZ = drillZ + tapTravel
+   feedRate = 10000
+   OnMove()
+
+--feed out
+   feedRate = tapPitch * reverseMult * underFeed
+   endZ = tapTravel + clearance
+   OnMove()
+
+--retract to clearance plane
+   endZ = safeZ
+   OnRapid()
+
+end
+
+function OnRigidTap()
+   OnRapid()
+   clearance = 1 --tapping clearance height
+
+   spindlecache = spindleSpeed
+   feedRate = tapPitch*spindleSpeed
+   current_feedRate=feedRate
+   endZ=clearance + drillStart + toolOffset
+   OnRapid()
+   linenumber()
+   post.Text (" G84")
+   post.NonModalNumber (" F", feedRate, "0")
+   post.NonModalNumber (" S", spindleSpeed, "+0")
+   post.NonModalNumber (" Z", (drillZ + toolOffset), "+0.000")
+   post.NonModalNumber (" Z", (clearance + drillStart + toolOffset), "0.000")
+   post.Eol()
+   endZ = safeZ
+   OnRapid()
+
+end
+
+
+function OnTapEnd()
+--   text(" M48\n") --enable FRO
+--   text(" G94\n") --feed per min
+end

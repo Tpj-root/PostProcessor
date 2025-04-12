@@ -1,0 +1,93 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Minimum G-code post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Min spec g-code for compatibility with as many controllers as possible\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("No comments\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("G-codes used:\n")
+   ctrl:AppendText("G00,G01,G02,G03,G20,G21\n")
+   ctrl:AppendText("M-codes used:\n")
+   ctrl:AppendText("M03,M04,M05,M07,M08,M09\n")
+end
+
+
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   Created 19/10/2004
+--   based on Mach2.post
+
+post.SetOptions(post.ARC_SEGMENTS)
+
+
+function OnInit()
+   lineNumber = 10
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+      --   text (" G40 G90\n F1\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   nolines = true
+   post.Text("%\n%\n")
+   nolines = false
+   curX = 0
+   curY = 0
+end
+
+
+function OnEnd()
+   nolines = true
+   post.Text("%\n%\n")
+   nolines = false
+end
+
+function OnNewLine()
+   if nolines then return end
+   post.Text ("N")
+   post.Number (lineNumber, " 10")
+   lineNumber = lineNumber + 10
+end
+
+function DoNumber(value, axis)
+   ret = math.toint((value * 1000) ) / 1000
+   post.NonModalNumber(" " .. axis, ret * scale, "+0.000")
+   return ret
+end
+
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.Text (" G00")
+   curX = curX + DoNumber(endX - curX, "X")
+   curY = curY + DoNumber(endY - curY, "Y")
+   post.Eol()
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.Text (" G01")
+   curX = curX + DoNumber(endX - curX, "X")
+   curY = curY + DoNumber(endY - curY, "Y")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text (" G03")
+   else
+      post.Text (" G02")
+   end
+   curX = curX + DoNumber(endX - curX, "X")
+   curY = curY + DoNumber(endY - curY, "Y")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "+0.000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "+0.000")
+   post.Eol()
+end
+
+

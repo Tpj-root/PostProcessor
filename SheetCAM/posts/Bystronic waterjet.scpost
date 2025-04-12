@@ -1,0 +1,180 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Bystronic Laser post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Laser post for ByFlex 3015\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("M01 stops and M04/M05 turn the laser on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+post.ForceExtension("lcc")
+post.SetOptions(post.ARC_SEGMENTS)
+post.DefineCustomToolParam("WaterTool", "Cut quality", "cutQuality", sc.unit0DECPLACE, 1, 0, 1)
+
+function OnInit()
+   lineNumber = 1
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.TextDirect ("%\n")
+--   post.TextDirect ("(Filename: ", fileName, ")\n")
+--   post.TextDirect ("(Post processor: ", postName, ")\n")
+--   post.TextDirect ("(Date: ", date, ")\n")
+   post.TextDirect ("(<NcpProgram Version=\"1.0\" Units=\"")
+   
+   if(scale == metric) then
+      post.TextDirect("Metric\">)\n")
+   else
+      post.TextDirect("Inch\">)\n")
+   end
+   
+   post.TextDirect("(<MaterialInfo Label=\"steel\" MaterialCode=\"1.4301\" Thickness=\"")
+   post.TextDirect(materialThick * scale);
+   post.TextDirect("\" FormatType=\"Sheet\" DimX=\"")
+   post.TextDirect((materialX2 - materialX1) * scale)
+   post.TextDirect("\" DimY=\"")
+   post.TextDirect((materialY2 - materialY1) * scale)
+   post.TextDirect("\" Weight=\"78.5\" Waste=\"0.5\"/>)\n")
+   post.TextDirect("(<ProcessInfo CutTechnology=\"Water\" ProcessGas=\"Garnet80\" Clamping=\"False\"/>)\n")
+   post.TextDirect("(<Plan>)\n")
+   post.Text (" G29 X3000 Y1500 P1 H1 A1\n")
+   post.Text (" G52 X0 Y0 L1 C0\n")
+   post.Text (" G99\n")
+   post.Text (" G28 X500 Y500 L1 P1\n")
+--   post.Text (" M40\n")
+   post.TextDirect("(</Plan>)\n")
+   
+   
+   
+   bigArcs = 0 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   pendown = false
+   needEol = false
+   inPart = false
+   needContour = false
+   endDone = false
+   cutQuality = 1
+   inContour = false;
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "000")
+   lineNumber = lineNumber + 1
+end
+
+
+function OnFinish()
+   if(needEol) then
+      post.Text (" M05")
+      post.Eol()
+      needEol = false
+   end
+   CheckEol()
+   post.Text (" G98\n")
+   post.TextDirect("(</Part>)\n")
+   post.TextDirect("(</NcpProgram>)\n")
+   post.TextDirect ("&\n")
+
+end
+
+function CheckEol()
+   if(needEol) then
+      post.Eol()
+      needEol = false
+   end
+
+   if needContour and leadinType == 0 then
+      needContour = false
+      post.TextDirect("(<Contour>)\n")
+      endDone = false
+      inContour = true
+   end
+   
+   if leadinType == 2 and not endDone  and inContour then
+      post.TextDirect("(</Contour>)\n")
+      inContour = false
+      endDone = true
+   end
+end
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.00001) then return end
+   CheckEol()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX, "0.##")
+   post.ModalNumber (" Y", endY, "0.##")
+   needEol = true
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.00001) then return end
+   CheckEol()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX, "0.##")
+   post.ModalNumber (" Y", endY, "0.##")
+   if(pendown) then
+      post.Text (" M04")
+      pendown = false
+   end
+   needEol = true
+end
+
+function OnArc()
+   CheckEol()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX, "0.##")
+   post.NonModalNumber (" Y", endY, "0.##")
+   post.Text (" I")
+   post.Number ((arcCentreX), "0.##")
+   post.Text (" J")
+   post.Number ((arcCentreY), "0.##")
+   if(pendown) then
+      post.Text (" M04")
+      pendown = false
+   end
+   needEol = true
+end
+
+
+function OnPenDown()
+   CheckEol()
+   post.Text (" G10 S" .. cutQuality .."\n")
+   pendown = true
+   needContour = true
+end
+
+
+function OnPenUp()
+   post.Text (" M05 \n")
+   needEol = false;
+   if not endDone and inContour then
+      post.TextDirect("(</Contour>)\n")
+      inContour = false
+      endDone = true
+   end
+end
+
+function OnComment()
+   CheckEol()
+   post.TextDirect("(",commentText,")\n")
+end
+
+function OnNewPart()
+   CheckEol()
+   if not endDone and inContour then
+      post.TextDirect("(</Contour>)\n")
+      endDone = true
+      inContour = false
+   end
+   if inPart then
+      post.TextDirect("(</Part>)\n")
+   end
+   inPart = true
+   post.TextDirect("(<Part PartCode=\"" .. partName .. "\">)\n")
+end
+

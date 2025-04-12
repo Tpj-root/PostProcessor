@@ -1,0 +1,54 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("LinuxCNC plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("uses G43 tool length offsets\n")
+end
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   revision 7/10/04
+--   Added new arc handling
+
+--   Created 30/3/2005
+--   based on Mach2.post
+
+
+function OnInit()
+    firstmove=1
+end
+
+
+post.ForceExtension("cam")
+
+function OnFinish()
+end
+
+function OnRapid()
+end
+
+function OnMove()
+    if firstmove then
+        firstmove = nil
+        post.Text("s ")
+        post.Number(currentX * scale,"0.################")
+        post.Text(" ")
+        post.Number(currentY * scale,"0.################")
+    post.Eol()
+    end
+    post.Text("l ")
+    post.Number(endX * scale,"0.################")
+    post.Text(" ")
+    post.Number(endY * scale,"0.################")
+    post.Eol()
+end
+
+function OnArc()
+    post.ArcAsMoves(0.01)
+end
+

@@ -1,0 +1,182 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Plasma post for Zinser CNC500 and CNC4010 with plasma/flame and plate marker\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+--[[O: Autogen
+G: Plasma G04
+P: Plasma M0
+H: Water jet
+K: Kjellberg PGC
+R: Hypertherm
+]]
+
+post.ForceExtension("zcn")
+
+function OnInit()
+   nolines = true
+   local name = string.upper(fileNameOnly);
+   name = string.sub(name, 1, 8)   
+   post.Text("%" .. name .. "\n")
+   nolines = false
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   if(scale == metric) then
+      post.Text (" G21\n") --metric mode
+   else
+      post.Text (" G20\n") --inch mode
+   end
+   post.Text (" G90 G40 V11.0\n")
+   post.Text(" G92 X0 Y0\n")
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   curLeadin = 0
+   appendString = ""
+end
+
+function OnNewLine()
+   if nolines then return end
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M02\n")
+   nolines = true
+   post.Text("#\n%\n")
+end
+
+function OnRapid()
+   if(math.hypot(currentX - endX, currentY - endY) < 0.001) then return end
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function CheckLead()
+   if leadinType == curLeadin then return end
+   curLeadin = leadinType;
+   if leadinType == 1 then
+      appendString = appendString .. " M15"
+   end
+end
+
+function OnMove()
+   if(math.hypot(currentX - endX, currentY - endY) < 0.001) then return end
+   CheckLead()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   if(appendString ~= "") then
+      post.Text(appendString, "\n")
+      appendString = ""
+   end
+   post.Eol()
+end
+
+function OnArc()
+   CheckLead()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   if(appendString ~= "") then
+      post.Text(appendString)
+      appendString = ""
+   end
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if (preheat > 0.001) then
+      if toolClass == "FlameTool" then
+         post.Text(" M08\n")
+      end
+      post.Text (" G04 F")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end
+   if toolClass == "MarkerTool" then
+      appendString = appendString .. " M35"
+   elseif toolClass == "FlameTool" then
+      appendString = appendString .. " M09"
+      appendString = appendString .. " M04"
+   else
+      appendString = appendString .. " M21"
+   end
+   if (pierceDelay > 0.001) then
+      post.Text (" G04 F")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   if toolClass == "MarkerTool" then
+      post.Text(" M34")
+   elseif toolClass == "FlameTool" then
+      post.Text(" M03")
+   else
+      post.Text (" M20")
+   end
+   if curLeadin == 2 then
+      post.Text (" M16")
+   end
+   post.Eol();
+
+   if (endDelay > 0) then
+      post.Text (" G04 F")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+--   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+--[[   if(toolClass == "FlameTool") then
+      post.Text(" (*M:O;0;")
+      post.Number(materialThick, "0.0")
+      post.Text("*\n")
+   elseif(toolClass == "MarkerTool") then
+   else
+   end]]
+end
+
+function OnNewPart()
+--   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

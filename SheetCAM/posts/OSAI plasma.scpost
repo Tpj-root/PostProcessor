@@ -1,0 +1,140 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("OSAI 10 series plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("Comments use ;\n")
+   ctrl:AppendText("Absolute IJ\n")
+   ctrl:AppendText("Rapids are GX..Y..\n")
+end
+
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--created 13/4/06
+--based on Mach2.post
+
+function OnInit()
+   line = 10
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" ;Filename: ", fileName, "\n")
+--   post.Text (" (Date: ", date, "\n")
+   post.Text(" (UGS,1,X,")
+   post.Number ((materialX1 - 10) * scale,"0.###")
+   post.Text(",")
+   post.Number ((materialX2 + 10) * scale,"0.###")
+   post.Text(",Y,")
+   post.Number ((materialY1 - 10) * scale,"0.###")
+   post.Text(",")
+   post.Number ((materialY2 + 10) * scale,"0.###")
+   post.Text(")\n")
+   post.Text(" UOV=1.2\n")
+--   if(scale == metric) then
+--      post.Text (" G21 (Units: Metric)\n") --metric mode
+--   else
+--      post.Text (" G20 (Units: Inches)\n") --inch mode
+--   end
+--   post.Text (" G40 G90\n F1\n")
+   post.Text (" F5000\n")
+   post.Text (" GM05M65\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M30\n")
+end
+
+function OnRapid()
+   if(endX > 100000 or endY > 100000) then return end
+   if(math.hypot(endX - currentX, endY-currentY) < 0.0001) then return end
+   post.ModalText (" G")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+--   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY-currentY) < 0.0000001) then return end
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+--   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+--   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY) * scale, "0.0000")
+   post.Eol()
+end
+
+
+function OnComment()
+  post.Text(" ;",commentText,"\n")
+end
+
+function OnSetFeed()
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnToolChange()
+   post.Text (" T")
+   post.Number (0, "0")
+   post.Text (" M06")
+   post.Eol()
+end
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+function OnNewPart()
+   post.Text(" ;Part: ",partName,"\n");
+end
+
+
+function OnPenDown()
+    post.Text(" M04\n")
+end
+
+
+function OnPenUp()
+   post.Text(" M47\n")
+   post.Text (" GM05M65\n")
+end
+
+
+function OnDrill()
+   rapid()
+   pendown()
+   endz = drillz
+   move()
+   penup()
+   endz = safez
+   rapid()
+end

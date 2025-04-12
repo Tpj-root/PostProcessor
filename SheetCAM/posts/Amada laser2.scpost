@@ -1,0 +1,167 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Amada laser post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Designed for use with machine having fully automatic thc\n")
+   ctrl:AppendText("Tool numbers 100 and higher are oxy-fuel, lower are plasma\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--  revision 3/2/07 
+--  Removed final safety move. This is now done in SheetCam
+
+   power = 1500
+
+   post.DefineCustomOption("Pierce power","piercePower",sc.unit2DECPLACE)
+   post.DefineCustomOption("Pierce frequency","pierceFreq",sc.unit2DECPLACE)
+   post.DefineCustomOption("Pierce duty cycle","pierceDuty",sc.unit2DECPLACE)
+   post.DefineCustomOption("Pierce gas  (63,64,65 or 67)","pierceGas",sc.unit0DECPLACE)
+   post.DefineCustomOption("Cutting frequency","cutFrequency",sc.unit2DECPLACE)
+   post.DefineCustomOption("Cutting duty cycle","cutDuty",sc.unit2DECPLACE)
+   post.DefineCustomOption("Cutting gas (63,64,65 or 67)","cutGas",sc.unit2DECPLACE)
+
+
+function OnInit()
+   lineNumber = 1
+   post.ShowCustomOptions("Settings")
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+--   if(scale == metric) then
+--      text (" G21 (Units: Metric)\n") --metric mode
+--   else
+--      text (" G20 (Units: Inches)\n") --inch mode
+--   end
+   post.Text (" G90\n")
+   post.Text (" G65 P9101 Z")
+   post.Number(safeZ * scale,"0.0###")
+   post.Eol()
+--   post.Text (" G93 X__ Y__ Z__\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   oldfeed = -1
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 1
+end
+
+
+function OnFinish()
+   post.Text (" G25\n M30\n")
+end
+
+function OnRapid()
+---text(currentx," ",currenty," ",endx," ",endy)
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   if(endX > 1e30) then return end
+   CheckFeed()
+   post.Text (" G00")
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   CheckFeed()
+   post.Text (" G01")
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnArc()
+   CheckFeed()
+   if(arcAngle <0) then
+      post.Text (" G03")
+   else
+      post.Text (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.NonModalNumber (" I",(arcCentreX - currentX) * scale, "0.0000")
+   post.NonModalNumber (" J",(arcCentreY - currentY) * scale, "0.0000")
+   post.Eol()
+end
+
+
+function CheckFeed()
+   if(feedRate == oldfeed) then return end
+   post.NonModalNumber (" F", feedRate * scale, "0.###")
+   oldfeed = feedRate 
+   post.Eol()
+end
+
+function OnPenDown()
+   if (preheat > 0) then
+      post.Text (" G04 P")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end
+   post.Text (" M98 P100\n")
+   if (pierceDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   post.Text (" M61\n")
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   post.Text (" G65 P9100")
+   post.NonModalNumber(" S",piercePower,"0.###");
+   post.NonModalNumber(" B",pierceFreq,"0.###");
+   post.NonModalNumber(" C",pierceDuty,"0.###");
+   post.NonModalNumber(" I",pierceGas,"0.###");
+   post.NonModalNumber(" J",pierceDelay,"0.###");
+   post.NonModalNumber(" W",power,"0.###");
+   post.NonModalNumber(" T",cutFrequency,"0.###");
+   post.NonModalNumber(" U",cutDuty,"0.###");
+   post.NonModalNumber(" I",cutGas,"0.###");
+   post.NonModalNumber(" J",endDelay,"0.###");
+   post.Eol();
+end
+
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

@@ -1,0 +1,126 @@
+post.ForceExtension("plt")
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("HPGL post processor\n")
+   ctrl:AppendText(" \n")
+   ctrl:AppendText("Outputs basic HPGL\n")
+end
+
+
+
+--  revision 3/2/07 
+--  Removed final safety move. This is now done in SheetCam
+
+--   revision 7/10/05
+--   Added new arc handling
+
+--   created 21/11/04
+
+
+
+function OnInit()
+   scale = 40
+   post.Text("IN;PA;PU;\n")
+   lastinst = 0
+   arcscale = -57.2957795130
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+end
+
+
+function OnFinish()
+   post.Text("\n")
+end
+
+function OnRapid()
+   if(endX > 1e17 or endY > 1e17) then return end
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.Text("\nPU")
+   post.Number ( endX * scale, "0.##")
+   post.Text(",")
+   post.Number ( endY * scale, "0.##")
+   post.Text(";")
+   lastinst =0;
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   if(lastinst ~= 1) then
+      post.Text("\nPD")
+   end
+   lastinst = 1
+   post.Text(" ")
+   post.Number ( endX * scale, "0.##")
+   post.Text(",")
+   post.Number ( endY * scale, "0.##")
+   post.Text(";")
+end
+
+function OnArc()
+   if(lastinst == 0) then
+      post.Text("\nPD;")
+   end
+   post.Text("\nAA");
+   post.Number ( arcCentreX * scale, "0.##")
+   post.Text(",")
+   post.Number ( arcCentreY * scale, "0.##")
+   post.Text(",")
+   post.Number ( arcAngle * arcscale, "0.####")
+   post.Text(";")
+   lastinst = 2
+end
+
+function OnPenDown()
+end
+
+
+function OnPenUp()
+end
+
+function OnSpindleCW()
+
+end
+
+function OnSpindleCCW()
+
+end
+
+function OnSpindleOff()
+
+end
+
+
+function OnNewOperation()
+
+end
+
+function OnToolChange()
+   post.Text("\nSP")
+   post.Number (tool,"0")
+   post.Text(";\n")
+   lastinst = 0
+end
+
+function OnSpindleChanged()
+end
+
+function OnNewPart()
+end
+
+
+function OnFloodOn()
+end
+
+function OnMistOn()
+end
+
+function OnCoolantOff()
+end
+
+function OnDrill()
+end

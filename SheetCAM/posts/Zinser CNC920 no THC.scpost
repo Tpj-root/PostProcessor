@@ -1,0 +1,206 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Zinser CNC920 plasma and flame cutting post processor\n")
+   ctrl:AppendText("\n")
+end
+
+
+
+
+function OnInit()
+   nolines = true
+   post.Text("%\n")
+   nolines = false
+   lineNumber = 1
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+--   post.Text (" (Filename: ", fileName, ")\n")
+--   post.Text (" (Post processor: ", postName, ")\n")
+--   post.Text (" (Date: ", date, ")\n")
+--   if(scale == metric) then
+--      post.Text (" G21 (Units: Metric)\n") --metric mode
+--   else
+--      post.Text (" G20 (Units: Inches)\n") --inch mode
+--   end
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   format = "0.00"
+   angScale = 57.295779513082320876798154814105
+   needcr = false
+   tooldata = ""
+   moveNumber = 0
+   firstTool = true
+end
+
+function OnNewLine()
+   if nolines then return end
+   post.Text ("    N")
+   post.Number (lineNumber, "0")
+   lineNumber = lineNumber + 1
+end
+
+function eol()
+   post.Text(" $\n")
+   needcr = false
+end
+
+function checkcr()
+   if moveNumber > 0 then
+      if moveNumber == 2 then
+         if(toolClass == "PlasmaTool") then
+            post.Text (" M15")
+         else
+            if(toolClass == "FlameTool") then
+               post.Text (" M10")
+            else
+               post.Text(" M03")
+            end
+         end
+      end
+      if moveNumber == 1 then
+         if(toolClass == "FlameTool") then
+            post.Text(" M09")
+         end
+      end
+      moveNumber = moveNumber - 1
+   end
+   if needcr then eol() end
+end
+
+function OnFinish()
+   checkcr()
+   post.Text(" M30")
+   eol()
+   nolines = true
+   post.Text("#\n" .. tooldata .."%\n")
+   if(lineNumber > 999) then
+      post.Error("This job is too big to fit in your machine.\n")
+   end
+end
+
+function OnRapid()
+   if (endX == currentX and endY == currentY) then return end
+   checkcr()
+   post.ModalNumber (" X", endX * scale, format)
+   post.ModalNumber (" Y", endY * scale, format)
+   post.Text (" G00 G01")
+   eol()
+end
+
+function OnMove()
+   if (endX == currentX and endY == currentY) then return end
+   checkcr()
+   post.ModalNumber (" X", endX * scale, format)
+   post.ModalNumber (" Y", endY * scale, format)
+   post.Text (" G01")
+   needcr = true
+end
+
+function OnArc()
+   checkcr()
+--   if(math.hypot(arcCentreX - currentX, arcCentreY - currentY) < 20) and toolClass ~= "MarkerTool" then
+--      post.Text(" M60")
+--   end
+   post.Text (" I")
+--   post.Number ((arcCentreX - currentX) * scale, format)
+   post.Number ((arcCentreX) * scale, format)
+   post.Text (" J")
+--   post.Number ((arcCentreY - currentY) * scale, format)
+   post.Number ((arcCentreY) * scale, format)
+   post.Text (" A")
+   if(arcAngle < 0) then
+      post.Number (-arcAngle * angScale, "0.0##")
+   else
+      post.Number (arcAngle * angScale, "0.0##")
+   end
+   if(arcAngle <0) then
+      post.Text (" G03")
+   else
+      post.Text (" G02")
+   end
+   needcr = true
+end
+
+
+function OnPenDown()
+   checkcr()
+   if (preheat > 0.001) then
+      post.Text (" G04 ")
+      post.Number (preheat,"0.0")
+      post.Text("S")
+      if(toolClass == "FlameTool") then
+         post.Text(" M08")
+      end
+      eol()
+   end
+   moveNumber = 2
+   if (pierceDelay > 0.001) then
+      post.Text (" G04 ")
+      post.Number (pierceDelay,"0.0")
+      post.Text("S")
+      needcr = true
+      checkcr()
+   end
+end
+
+
+function OnPenUp()
+   if(toolClass == "PlasmaTool") then
+      post.Text (" M16")
+   else
+      if(toolClass == "FlameTool") then
+         post.Text (" M11")
+         moveNumber = 3
+      else
+         post.Text(" M05")
+      end
+   end
+
+   eol()
+   if (endDelay > 0) then
+      post.Text (" G04 ")
+      post.Number (endDelay,"0.###")
+      post.Text("S")
+      eol()
+   end
+   moveNumber = 0
+end
+
+
+
+function OnNewOperation()
+   --post.Text (" (Operation: ", operationName, ")\n")
+   if(firstTool) then
+      post.Text(" G90")
+      firstTool = false
+      post.ModalNumber (" F", feedRate * scale, "0")
+      eol()
+   else
+      post.ModalNumber (" F", feedRate * scale, "0")
+   end
+end
+
+function OnComment()
+end
+
+function OnToolChange()
+--   tooldata = tooldata .. "T" .. tool .. " L0.0 D" .. post.FormatNumber(toolDia,"0.0") .. " $\n"
+--   checkcr()
+--   post.Text (" T")
+--   post.Number (tool, "0")
+
+--   eol()
+end
+
+function OnNewPart()
+--   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

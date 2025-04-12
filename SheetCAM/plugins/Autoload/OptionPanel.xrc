@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<resource xmlns="http://www.wxwidgets.org/wxxrc">
+	<object class="wxPanel" name="OptionPanel">
+		<object class="wxBoxSizer">
+			<orient>wxVERTICAL</orient>
+			<object class="sizeritem">
+				<object class="wxCheckBox" name="ID_ENABLESCAN">
+					<label>Enable Autoload</label>
+				</object>
+				<flag>wxALL|wxALIGN_LEFT</flag>
+				<border>3d</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxCheckBox" name="ID_CHECKSTART">
+					<label>Check for changes at startup</label>
+				</object>
+				<flag>wxALL|wxALIGN_LEFT</flag>
+				<border>3d</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxStaticBoxSizer">
+					<label>Scan a directory</label>
+					<orient>wxVERTICAL</orient>
+					<object class="sizeritem">
+						<object class="wxCheckBox" name="ID_CHECKDIR">
+							<label>Enabled</label>
+						</object>
+						<flag>wxALL|wxALIGN_LEFT</flag>
+						<border>2d</border>
+					</object>
+					<object class="sizeritem">
+						<object class="wxCheckBox" name="ID_CHECKSUB">
+							<label>Include sub directories</label>
+						</object>
+						<flag>wxALL|wxALIGN_LEFT</flag>
+						<border>2d</border>
+					</object>
+					<object class="sizeritem">
+						<object class="wxBoxSizer">
+							<object class="sizeritem">
+								<object class="wxTextCtrl" name="ID_TCDIR" />
+								<flag>wxALIGN_CENTER_VERTICAL</flag>
+								<border>2</border>
+								<option>1</option>
+							</object>
+							<object class="sizeritem">
+								<object class="wxButton" name="ID_DIRBUTTON">
+									<label>...</label>
+									<size>20,-1d</size>
+								</object>
+								<flag>wxALIGN_CENTER_VERTICAL</flag>
+								<border>2</border>
+							</object>
+						</object>
+						<flag>wxALL|wxEXPAND</flag>
+						<border>2d</border>
+					</object>
+				</object>
+				<flag>wxALL|wxEXPAND</flag>
+				<border>2d</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxStaticBoxSizer">
+					<label>Timing</label>
+					<object class="sizeritem">
+						<object class="wxFlexGridSizer">
+							<cols>2</cols>
+							<vgap>3d</vgap>
+							<hgap>3d</hgap>
+							<object class="sizeritem">
+								<object class="wxStaticText" name="ID_STATICTEXT2">
+									<label>Delay before loading</label>
+								</object>
+								<flag>wxRIGHT|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+								<border>3d</border>
+							</object>
+							<object class="sizeritem">
+								<object class="wxTextCtrl" name="ID_TCDELAY" subclass="UnitCtrl" />
+								<flag>wxALL|wxALIGN_LEFT|wxALIGN_CENTER_VERTICAL</flag>
+							</object>
+							<object class="sizeritem">
+								<object class="wxStaticText" name="ID_STATICTEXT3">
+									<label>Last file changed:</label>
+								</object>
+								<flag>wxRIGHT|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+								<border>3d</border>
+							</object>
+							<object class="sizeritem">
+								<object class="wxBoxSizer">
+									<object class="sizeritem">
+										<object class="wxStaticText" name="ID_STTIME">
+											<label></label>
+											<size>100,-1d</size>
+										</object>
+										<flag>wxALL|wxALIGN_CENTER_VERTICAL</flag>
+									</object>
+									<object class="sizeritem">
+										<object class="wxButton" name="ID_BTRESET">
+											<label>Reset time</label>
+										</object>
+										<flag>wxALL|wxALIGN_CENTER_VERTICAL</flag>
+									</object>
+								</object>
+								<flag>wxALL|wxEXPAND</flag>
+							</object>
+						</object>
+						<flag>wxALL|wxEXPAND</flag>
+					</object>
+				</object>
+				<flag>wxBOTTOM|wxLEFT|wxRIGHT|wxEXPAND</flag>
+				<border>3d</border>
+			</object>
+		</object>
+	</object>
+</resource>

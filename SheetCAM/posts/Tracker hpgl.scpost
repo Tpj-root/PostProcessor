@@ -1,0 +1,110 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("HPGL post processor for Tracker CNC plasma cutters\n")
+   ctrl:AppendText(" \n")
+   ctrl:AppendText("Outputs basic HPGL\n")
+   ctrl:AppendText("Arcs are drawn as line segments\n")
+end
+
+
+--  revision 3/2/07 
+--  Removed final safety move. This is now done in SheetCam
+
+--   revision 7/10/05
+--   Added new arc handling
+
+--   created 21/11/04
+
+
+post.ForceExtension("plt")
+
+function OnInit()
+   scale = 40
+   post.Text("IN;\nLT;\n")
+   lastinst = 0
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+end
+
+
+function OnFinish()
+   post.Text("\n")
+end
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.Text("PU")
+   post.Number ( endX * scale, "0")
+   post.Text(" ")
+   post.Number ( endY * scale, "0")
+   post.Text(";\n")
+   lastinst =0;
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.Text("PD")
+   post.Number ( endX * scale, "0")
+   post.Text(" ")
+   post.Number ( endY * scale, "0")
+   post.Text(";\n")
+end
+
+function OnArc()
+   post.ArcAsMoves(0.05)
+end
+
+function OnPenDown()
+end
+
+
+function OnPenUp()
+end
+
+function OnSpindleCW()
+
+end
+
+function OnSpindleCCW()
+
+end
+
+function OnSpindleOff()
+
+end
+
+
+function OnNewOperation()
+
+end
+
+function OnToolChange()
+   post.Text("\nSP")
+   post.Number (tool,"0")
+   post.Text(";\n")
+   lastinst = 0
+end
+
+function OnSpindleChanged()
+end
+
+function OnNewPart()
+end
+
+
+function OnFloodOn()
+end
+
+function OnMistOn()
+end
+
+function OnCoolantOff()
+end
+
+function OnDrill()
+   OnRapid()
+   post.Text("PD;\nPU;\n")
+end

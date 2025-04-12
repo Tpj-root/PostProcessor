@@ -1,0 +1,123 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Post processor for Older ESAB Vision controllers\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+
+
+function OnInit()
+
+   nolines = true
+   post.Text("%\n")
+   nolines = false
+   lineNumber =1
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+
+--   text ("(Filename: ", filename, ")\n")
+--   text ("(Post processor: ", postname, ")\n")
+--   text ("(Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G71\n") --metric mode
+   else
+      post.Text (" G70\n") --inch mode
+   end
+   post.Text (" G40\n G90\n G5\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   if (nolines) then return end
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 1
+end
+
+
+function OnFinish()
+   post.Text (" M30\n")
+end
+
+function OnRapid()
+   if(currentX == endX and currentY == endY) then return end
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0###")
+   post.ModalNumber (" Y", endY * scale, "0.0###")
+   post.Eol()
+end
+
+function OnMove()
+   if(currentX == endX and currentY == endY) then return end
+   post.ModalText (" G21")
+   post.ModalNumber (" X", endX * scale, "0.0###")
+   post.ModalNumber (" Y", endY * scale, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0###")
+   post.NonModalNumber (" Y", endY * scale, "0.0###")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0###")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+--   if (preheat > 0) then
+--      text (" G04 F")
+--      number (preheat,"0.###")
+--      eol()
+--   end
+   post.Text (" M06\n")
+--   if (piercedelay > 0) then
+--      text (" G04 F")
+--      number (piercedelay,"0.###")
+--      eol()
+--   end
+end
+
+
+function OnPenUp()
+   post.Text (" M07\n")
+--   if (enddelay > 0) then
+--      text (" G04 F")
+--      number (enddelay,"0.###")
+--      eol()
+--   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+end
+
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end

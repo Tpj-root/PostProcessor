@@ -1,0 +1,313 @@
+--************************************************
+--*** Set these values up to suit your machine ***
+--************************************************
+markerX = 1000 -- Plate marker X offset in millimetres
+markerY = 2000 -- Plate marker Y offset in millimetres
+markerZ = 3000 -- Plate marker Z offset in millimetres
+
+-- arcs smaller than this will be slowed down
+-- Note this is in millimetres
+slowRadius = 50
+
+--minimum slowdown speed (0.50 = 50%)
+slowPercent = 0.50
+
+--THC on and off codes. Use nil if you don't want THC control e.g:
+-- thcOnCode = nil
+-- thcOffCode = nil
+
+--here is another example that use M667 and M666
+--thcOnCode = " M667"
+--thcOffCode = " M666"
+
+thcOnCode = " M09"
+thcOffCode = " M08"
+
+
+--Plate marker on/off codes
+plateOnCode = " M90 P1"
+plateOffCode = " M91 P1"
+
+
+--Wait for torch code. If your machine does not have a wait for torch function, set this to nil
+--waitTorchCode = " M92 P23"
+
+--this is the distance between each torch reference in MILLIMETRES
+refDistance = 250
+
+--this is the code used to reference. Set it to nil if you don't want to reference
+refCode = " G29 Z0\n G92 Z0"
+
+--set this to limit the speed of Z rapids. Comment this line out to disable it.
+zSpeed = 3000
+
+--************************************************
+--***           End of settings                ***
+--************************************************
+
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("EaziCNC plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Generic plasma post for machines with THC\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("Allows for a plate marker\n")
+end
+
+
+--   created 31/3/08
+--   Based on Mach2 plasma.post
+
+
+
+function OnInit()
+   
+   nolines = true
+   post.Text("(* MILL)\n")
+   post.Text("(* W")
+   post.Number (materialX2 - materialX1, "0.000")
+   post.Text(" D")
+   post.Number (materialY2 - materialY1, "0.000")
+   post.Text(" H")
+   post.Number (materialThick, "0.000")
+   post.Text(" block size)\n")
+   post.Text("(* X")
+   post.Number (materialX1, "0.000")
+   post.Text(" Y")
+   post.Number (materialY1, "0.000")
+   post.Text(" Z")
+   post.Number (materialThick, "0.000")
+   post.Text(" origin\n")
+   post.Text("(* HX")
+   if(not homeX) then homeX = 0 end
+   post.Number (homeX, "0.000")
+   post.Text(" HY")
+   if(not homeY) then homeY = 0 end
+   post.Number (homeY, "0.000")
+   post.Text(" HZ")
+   if(not homeZ) then homeZ = materialThick end
+   post.Number (homeZ, "0.000")
+   post.Text(" home)\n")   
+   nolines = false
+   lineNumber = 10
+   dist = 9999999
+
+   xOff = 0
+   yOff = 0
+   zOff = 0
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G53 G90 G40\n F1\n S500\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   thcstate = 1
+   ThcOff()
+end
+
+function OnNewLine()
+   if nolines then return end
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text(" G29\n")
+   post.Text (" M05 M30\n")
+end
+
+function OnRapid()
+   if(endX > 1e17 and endY > 1e17) then return end
+   local len = math.hypot(endX - currentX , endY - currentY)
+   dist = dist + len
+   if endZ == pierceHeight  and len < 0.0001 then return end --ignore move to pierce height
+
+   if(len < 0.0001) and zSpeed then
+      post.ModalText (" G01")
+      post.ModalNumber (" Z", (endZ + zOff) * scale, "0.0000")
+      post.ModalNumber (" F", zSpeed * scale, "0.0###")
+   else
+      post.ModalText (" G00")
+      post.ModalNumber (" X", (endX + xOff) * scale, "0.0000")
+      post.ModalNumber (" Y", (endY + yOff) * scale, "0.0000")
+      post.ModalNumber (" Z", (endZ + zOff) * scale, "0.0000")
+   end
+   post.Eol()
+end
+
+function OnMove()
+   local len = math.hypot(endX - currentX , endY - currentY)
+   dist = dist + len
+   if(len > slowRadius) then
+      ThcOn()
+   end
+   post.ModalText (" G01")
+   post.ModalNumber (" X", (endX + xOff) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + yOff) * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + zOff) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   local radius = math.hypot(currentX - arcCentreX, currentY - arcCentreY)
+   dist = dist + radius * math.abs(arcAngle)
+
+   if (radius < slowRadius) and (math.abs(arcAngle) > 0.5) and toolClass ~= "MarkerTool" then
+      feed = (radius / slowRadius)
+      if(feed < slowPercent) then
+         feed = slowPercent
+      end
+      feed = feed * feedRate
+      ThcOff()
+   else
+      feed = feedRate
+      ThcOn()
+   end
+
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.ModalNumber (" X", (endX + xOff) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + yOff) * scale, "0.0000")
+   post.ModalNumber (" Z", endZ * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feed * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if(toolClass == "MarkerTool") then
+      post.Text (plateOnCode .. "\n")
+   else
+      if (preheat > 0.001) then
+         post.ModalText (" G00")
+         post.ModalNumber (" Z", cutHeight * scale, "0.0000")
+         post.Eol()
+         post.ModalText(" G04")
+         post.NonModalNumber (" S", preheat,"0.###")
+         post.Eol()
+      end
+      if(dist >= refDistance) then
+         dist = 0
+         if(refCode) then
+            post.Text(refCode)
+            post.Text ("\n")
+         end
+      end
+      if zSpeed then
+         post.ModalText (" G01")
+         post.ModalNumber (" Z", pierceHeight * scale, "0.0000")
+         post.ModalNumber (" F", zSpeed * scale, "0.0###")
+      else
+         post.ModalText (" G00")
+         post.ModalNumber (" Z", pierceHeight * scale, "0.0000")
+      end
+      post.Text ("\n M03\n")
+      if(waitTorchCode) then
+        post.Text(waitTorchCode .. "\n")
+      end
+      if (pierceDelay > 0.001) then
+         post.ModalText(" G04")
+         post.NonModalNumber (" S", pierceDelay,"0.###")
+         post.Eol()
+      end
+   end
+end
+
+
+function OnPenUp()
+   if(toolClass == "MarkerTool") then
+      post.Text (plateOffCode .. "\n")
+   else
+      post.Text (" M05\n")
+      if (endDelay > 0) then
+         post.ModalText(" G04")
+         post.NonModalNumber (" S", endDelay,"0.###")
+         post.Eol()
+      end
+   end
+end
+
+function ThcOff()
+   if(not thcOffCode) then return end
+   if(thcstate ==1) then
+      thcstate = 0
+      post.Text(thcOffCode)
+      post.Text(" (THC off)\n");
+   end
+end
+
+function ThcOn()
+   if(not thcOnCode) then return end
+   if(toolClass == "MarkerTool") then return end
+   if(thcstate ==0) then
+      thcstate = 1
+      post.Text(thcOnCode)
+      post.Text(" (THC on)\n");
+      return
+   end
+   if(thcstate == 2) then
+      thcstate = 0
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+--   text (" M06 T")
+--   number (tool, "0")
+   post.ModalNumber(" F",feedRate * scale,"0.#")
+   post.Text ("  (", toolName, ")\n")
+   if(toolClass == "MarkerTool") then
+      xOff = markerX
+      yOff = markerY
+      zOff = markerZ
+      ThcOff()
+   else
+      xOff = 0
+      yOff = 0
+      zOff = 0
+   end
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

@@ -1,0 +1,176 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Excellon post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("For PCB drilling/routing machines")
+end
+
+
+function OnInit()
+   post.SetCommentChars ("();", "[]:")  --make sure ( and ) characters do not appear in system text
+   endstr = "M48\n"
+   if(scale == metric) then
+      endstr = endstr .. "METRIC\n" --metric mode
+      format = "0.0##"
+   else
+      endstr = endstr .. "INCH\n" --inch mode
+      format = "0.0###"
+   end
+   endstr = endstr .. "FMAT,1\nICI,OFF\n"
+post.Text(endstr)
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   post.Text("%\n")
+   tools = {}
+   toolClass = nil
+end
+
+function OnNewLine()
+end
+
+
+function OnFinish()
+   post.Text ("M30\n")
+end
+
+
+function OnRapid()
+   if(endX > 1e17 or endY > 1e17 or math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   if(toolClass == "DrillTool" or toolClass == nil) then return end
+   post.Text ("G00")
+   post.ModalNumber ("X", endX * scale, format)
+   post.ModalNumber ("Y", endY * scale, format)
+   post.Eol()
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.Text ("G01")
+   post.ModalNumber ("X", endX * scale, format)
+   post.ModalNumber ("Y", endY * scale, format)
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text ("G03")
+   else
+      post.Text ("G02")
+   end
+   post.NonModalNumber ("X", endX * scale, format)
+   post.NonModalNumber ("Y", endY * scale, format)
+
+--   post.ModalNumber ("Z", (endZ + toolOffset) * scale, format)
+   post.Text ("I")
+   post.Number ((arcCentreX - currentX) * scale, format)
+   post.Text ("J")
+   post.Number ((arcCentreY - currentY) * scale, format)
+   post.Eol()
+end
+
+
+function OnPenDown()
+   post.Text("M15\n")
+end
+
+function OnPenUp()
+   post.Text("M16\n")
+end
+
+function OnSpindleCW()
+end
+
+function OnSpindleCCW()
+end
+
+function OnSpindleOff()
+end
+
+
+function OnNewOperation()
+   post.Text (";Operation: ", operationName, "\n")
+end
+
+function OnComment()
+  post.Text(";",commentText,"\n")
+end
+
+function OnToolChange()
+   tools[tool] = tool
+   post.Text("T")
+   post.Number(tool,"00")
+   post.Text("C")
+   post.Number(toolDia * scale, format)
+   post.NonModalNumber ("S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnSetFeed()
+   post.NonModalNumber("F",feedRate,"000")
+   post.Eol()
+end
+
+
+function OnNewPart()
+   post.Text(";Part: ",partName,"\n");
+end
+
+
+function OnFloodOn()
+--   post.Text(" M08 (Flood coolant on)\n")
+end
+
+function OnMistOn()
+--   post.Text(" M07 (Mist coolant on)\n")
+end
+
+function OnCoolantOff()
+--   post.Text(" M09 (Coolant off)\n")
+end
+
+
+function OnDrillStart()
+   post.Text("G05\n")
+end
+
+function OnDrill()
+   post.ModalNumber ("X", endX * scale, format)
+   post.ModalNumber ("Y", endY * scale, format)
+   post.Eol()
+end
+
+function dummy()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+         endZ = depth + buffer
+      end
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end
+
+function OnTapStart()
+   post.Error("This machine does not support tapping")
+end
+

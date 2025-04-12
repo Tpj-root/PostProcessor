@@ -1,0 +1,127 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Plasma post processor for Fagor controls\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental code\n")
+end
+
+post.ForceExtension("cnc")
+
+--   created 3/12/08
+--   Based on Burny25 inc.post
+
+
+
+function OnInit()
+--   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+--   post.Text ("(Filename: ", fileName, ")\n")
+--   post.Text ("(Post processor: ", postName, ")\n")
+--   post.Text ("(Date: ", date, ")\n")
+   post.Text ("%\n")
+
+   post.Text ("G92 X0 Y0\nG91\n")
+   if(scale == metric) then
+      post.Text ("G71\n") --metric mode
+   else
+      post.Text ("G70\n") --inch mode
+   end
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   firstmove = 1
+   curx =0
+   cury =0
+end
+
+
+function OnFinish()
+   endX = 0
+   endY = 0
+   OnRapid()
+   post.Text ("%\n")
+end
+
+
+function OnRapid()
+   if(firstmove) then
+      firstmove = nil
+      return
+   end
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText("G00 ");
+   doxy()
+   post.Text("\n")
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText("G01 ")
+   doxy()
+   post.Eol()
+end
+
+function doxy()
+   tmp = (endX * scale) - curx
+   tmp = math.toint(tmp * 1000)/1000
+   curx = curx + tmp
+--   if(tmp ~=0) then
+      post.NonModalNumber("X",tmp,"0.0##")
+--   end
+
+   tmp = (endY * scale) - cury
+   tmp = math.toint(tmp * 1000)/1000
+   cury = cury + tmp
+--   if(tmp ~=0) then
+      post.NonModalNumber(" Y",tmp,"0.0##")
+--   end
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText ("G03 ")
+   else
+      post.ModalText ("G02 ")
+   end
+   doxy()
+   if((arcCentreX - currentX) ~=0) then
+      post.NonModalNumber (" I", (arcCentreX - currentX) * scale, "0.0##")
+   end
+   if((arcCentreY - currentY) ~=0) then
+      post.NonModalNumber (" J", (arcCentreY - currentY) * scale, "0.0##")
+   end
+   post.Eol()
+end
+
+function OnPenDown()
+   post.Text("M04\n")
+end
+
+function OnPenUp()
+   post.Text("M03\n")
+end
+
+
+function OnNewOperation()
+--   text ("(Operation: ", processname, ")\n")
+end
+
+function OnComment()
+  post.Text("(",commentText,")\n")
+end
+
+
+function OnNewPart()
+--   text("(Part: ",partname,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

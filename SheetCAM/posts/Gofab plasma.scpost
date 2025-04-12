@@ -1,0 +1,265 @@
+--************************************************
+--*** Set these values up to suit your machine ***
+--************************************************
+
+
+--Use a reference switch
+--Set this to false if you do not have a reference switch
+useRef = true
+
+--Use the home switch (G28.1)
+--Set to false if you use the probe input (G31)
+refHome=false
+
+--this is the distance between each torch reference in MILLIMETRES
+refDistance = 500
+
+--this is the reference feed rate in mm/min
+refFeed = 500
+
+--Put your switch offset value here in MILLIMETRES
+--Put a sheet of metal on your machine and place a sheet of paper on top.
+--Slowly jog the torch down onto the paper until the touch-off switch just operates.
+--Zero the Z axis then pull gently on the paper and slowly jog up until the paper slides out.
+--The Z axis position is your switch offset.
+switchOffset = 1.5
+
+--Scriber X,Y,Z offsets in MILLIMETRES. Do not use inches here even if you want inch code
+--Use the special code 'nil' on the Z axis to disable it.
+--In that case no Z values will be output at all while scribing.
+--e.g scriberZ = nil
+scriberX = 110
+scriberY = 220
+scriberZ = 0
+
+--scriber axis. Leave this as nil if the scriber is fixed to the same axis as the torch
+--e.g scriberAxis = nil
+scriberAxis = "A"
+
+--This an extra delay for the first pierce. The time is in seconds.
+firstDelay=0
+
+--************************************************
+--***           End of settings                ***
+--************************************************
+
+
+post.ForceExtension("ngc")
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Gofab plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("No comments\n")
+   ctrl:AppendText("M3/M5 turn the torch on/off\n")
+   ctrl:AppendText("Arcs are broken into linear moves\n")
+end
+
+
+post.DefineVariable("refDistance",sc.unitLINEAR,0,1e17)
+post.DefineVariable("refFeed",sc.unitFEED,0,1e17)
+post.DefineVariable("switchOffset",sc.unitLINEAR,-1e17,1e17)
+
+function OnInit()
+
+   offX = 0
+   offY = 0
+   offZ = 0
+   post.Text('%\n')
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text ("(Filename: ", fileName, ")\n")
+   post.Text ("(Post processor: ", postName, ")\n")
+   post.Text ("(Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text ("G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text ("G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text ("G90\n")
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   firstRef = true
+   currentZAxis = "Z"
+
+   dist = 9999999
+   lastz = 0
+   extraDelay = firstDelay
+end
+
+
+function OnFinish()
+   endZ = safeZ
+   OnRapid()
+   endX = 0
+   endY = 0
+   offX = 0
+   offY = 0
+   offZ = 0
+   OnRapid()
+   post.Text ("M05 M30\n")
+end
+
+function OnRapid()
+   if(endX > 1e17 and endY > 1e17) then return end
+   if(endZ < currentZ and endZ == pierceHeight) then return end
+   local len = math.hypot((endX + offX)-currentX , (endY + offY)-currentY)
+   dist = dist + len
+   if len < 0.001 and endZ < currentZ and endZ == pierceHeight then
+      return --Block the move to pierce height
+   end
+   
+   post.Text ("G00")
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   if(offZ and firstRef == false and currentZ ~= safeZ) then
+      post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   end
+   post.Eol()
+end
+
+function OnMove()
+   local len = math.hypot(endX - currentX , endY - currentY)
+   dist = dist + len
+   post.Text ("G01")
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   if(offZ) then
+      post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   end
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   post.ArcAsMoves(0.1)
+end
+
+function OnPenDown()
+   if toolClass == "MarkerTool" then
+      if (firstRef) then
+         Reference()
+         post.Text ("G00")
+         post.Text(" Z")
+         post.Number (safeZ  * scale, "0.0000")
+         post.Eol()
+         offX = scriberX
+         offY = scriberY
+         offZ = scriberZ
+         post.ModalNumber (" X", (currentX + offX) * scale, "0.0000")
+         post.ModalNumber (" Y", (currentY + offY) * scale, "0.0000")
+         post.Eol()
+      end
+      if (offZ) then
+         post.Text ("G00")
+         post.ModalNumber (" " .. currentZAxis, (cutHeight + offZ)  * scale, "0.0000")
+         post.Eol()
+      end
+      post.Text("M08\n")
+   else
+      if(dist >= refDistance) then
+         dist = 0
+         Reference()
+      end
+      post.Text("(Start cutting path id: path3521)\n")
+      post.Text("(Change tool to Plasma cutter)\n")
+
+      post.Text ("G00")
+      post.Text(" Z")
+      post.Number (pierceHeight  * scale, "0.0000")
+      post.Eol()
+      if (preheat > 0) then
+         post.Text ("\n G04 P")
+         post.Number (preheat,"0.###")
+         post.Eol()
+      end
+      post.Text ("\nG01 M03\n")
+   end
+   if (pierceDelay > 0) then
+      post.Text ("G04 P")
+      post.Number (pierceDelay + extraDelay,"0.###")
+      post.Eol()
+      extraDelay = 0;
+   end
+end
+
+
+function Reference()
+   firstRef = false
+   if not useRef then return end
+   if (refHome) then
+      post.Text("G28.1 Z")
+      post.Number(3 * scale, "0.00")
+   else
+      post.Text("G31 Z-100")
+   end
+   post.ModalNumber (" F", refFeed * scale, "0.0###")
+   post.Eol()
+   post.Text("G92 Z")
+   post.Number (-switchOffset * scale, "0.0000")
+   post.Eol()
+end
+
+function OnPenUp()
+   if toolClass == "MarkerTool" then
+      post.Text("M09\n")
+   else
+      post.Text ("G01 M05\n")
+   end
+   if (endDelay > 0) then
+      post.Text ("G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+   post.Text("(End cutting path id: path3521)\n")
+end
+
+
+function OnNewOperation()
+   post.Text ("(Operation: ", operationName, ")\n")
+end
+
+function OnToolChange()
+    if toolClass == "MarkerTool" then
+         if(scriberAxis and scriberAxis ~= currentZAxis) then
+            endZ = safeZ
+            OnRapid()
+            currentZAxis = scriberAxis
+         end
+         if(firstRef ~= true) then
+            offX = scriberX
+            offY = scriberY
+            offZ = scriberZ
+         end
+    else
+         if(scriberAxis and scriberAxis == currentZAxis) then
+            endZ = safeZ
+            OnRapid()
+            currentZAxis = "Z"
+         end
+         offX = 0
+         offY = 0
+         offZ = -materialThick
+    end
+end
+
+function OnNewPart()
+   post.Text("(Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   currentX = endX
+   currentY = endY
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end
+
+
+function OnComment()
+  post.Text("(",commentText,")\n")
+end

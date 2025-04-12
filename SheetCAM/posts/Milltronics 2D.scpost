@@ -1,0 +1,170 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Milltronics 2D post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Stops on every Z change\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Uses Radius arcs\n")
+   ctrl:AppendText("uses G43 tool length offsets\n")
+end
+
+post.SetOptions(post.ARC_SEGMENTS)
+
+
+function OnInit()
+   post.Text("O")
+   post.Text(fileNameOnly)
+   post.Eol()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text ("(Filename: ", fileName, ")\n")
+   post.Text ("(Post processor: ", postName, ")\n")
+   post.Text ("(Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text ("G21(Units: Metric)\n") --metric mode
+   else
+      post.Text ("G20(Units: Inches)\n") --inch mode
+   end
+   post.Text ("G0G40G90\nG90X0Y0\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   lastz = safeZ
+   startDepth = 0
+end
+
+
+
+function OnFinish()
+   post.Text ("M0(* RETURN TOOL TO Z-HOME POSITION THEN CYCLE START *)\n")
+end
+
+function OnRapid()
+   checkz()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText ("G00")
+   post.ModalNumber ("X", endX * scale, "0.0000")
+   post.ModalNumber ("Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   checkz()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText ("G01")
+   post.ModalNumber ("X", endX * scale, "0.0000")
+   post.ModalNumber ("Y", endY * scale, "0.0000")
+   post.ModalNumber ("F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   checkz()
+   if(arcAngle <0) then
+      post.ModalText ("G03")
+   else
+      post.ModalText ("G02")
+   end
+   post.NonModalNumber ("X", endX * scale, "0.0000")
+   post.NonModalNumber ("Y", endY * scale, "0.0000")
+   post.Text ("R")
+   post.Number (math.hypot(arcCentreX - currentX, arcCentreY - currentY) * scale, "0.0000")
+
+--[[
+   post.Text ("I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text ("J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+]]
+   post.ModalNumber ("F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function checkz()
+   if (lastz == (endZ + toolOffset)) then return end
+--[[   if ((lastz >= (safeZ + toolOffset)) and endZ == 0.5) then
+      lastz = (endZ + toolOffset)
+      return
+   end
+   if(lastz >= endZ + toolOffset and endZ >= startDepth) then return end]]
+   
+   if(lastz > endZ + toolOffset and 
+    endZ >= startDepth and 
+    endZ > -cutDepth) then
+      lastz = (endZ + toolOffset)
+      return
+   end
+   
+   lastz = (endZ + toolOffset)
+   post.Text("M0(* SET Z TO ")
+   post.Number ((endZ + toolOffset) * scale, "0.0000")
+   post.Text(" *)\n")
+end
+
+function OnSpindleCW()
+   post.Text ("M0(* SET SPINDLE AT")
+   post.Number (spindleSpeed, "0.##")
+   post.Text("RPM CLOCKWISE*)")
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.Text ("M0(* SET SPINDLE AT")
+   post.Number (spindleSpeed, "0.##")
+   post.Text("RPM COUNTER CLOCKWISE*)")
+   post.Eol()
+end
+
+function OnSpindleOff()
+   post.Text ("M0(* SPINDLE OFF *)\n")
+end
+
+
+function OnNewOperation()
+   post.Text ("(Operation: ", operationName, ")\n")
+   local pts = sc.Parts.Get()
+   local pt = pts:op_index(partIndex):GetParentPart()
+   local op = pt.operations:op_index(operationIndex):DynamicCast("OperationWithRoundTool")
+   if(op) then
+      startDepth = op.startDepth:op_get()
+      if startDepth == nil then
+         startDepth = 0
+      else
+         startDepth = -startDepth
+      end
+   else
+         startDepth = 0
+   end
+end
+
+function OnComment()
+  post.Text("(",commentText,")\n")
+end
+
+function OnToolChange()
+   post.Text ("M0(* ", toolName, " *)\n")
+end
+
+function OnNewPart()
+   post.Text("(Part: ",partName,")\n");
+end
+
+
+function OnFloodOn()
+   post.Text("(Flood coolant on)\n")
+end
+
+function OnMistOn()
+   post.Text("(Mist coolant on)\n")
+end
+
+function OnCoolantOff()
+   post.Text("(Coolant off)\n")
+end
+
+function OnDrill()
+   OnRapid()
+   post.Text("M0(* Drill to ")
+   post.Number(drillZ, "0.###")
+   post.Text(" *)\n")
+end

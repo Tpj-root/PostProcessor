@@ -1,0 +1,176 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("wingcnc post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Uses G02/G03 for helical moves\n")
+   ctrl:AppendText("No comments\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   Created 6/1/2006 based on TurboCNC.post
+
+
+
+function OnInit()
+   lineNumber = 10
+   post.SetCommentChars ("();", "[]:")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, "\n")
+   post.Text (" (Post processor: ", postName, "\n")
+   post.Text (" (Date: ", date, "\n")
+   if(scale == metric) then
+      post.Text(" (Units: Metric\n")
+      post.Text (" G71\n") --metric mode
+   else
+      post.Text(" ;Units: Inches\n")
+      post.Text (" G70\n") --inch mode
+   end
+   post.Text (" G90\n")  --absolute
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M05\n M30\n")
+end
+
+function OnRapid()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.######")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnArc()
+   if(math.abs(endZ - currentX) > 0.001) then
+      post.ArcAsMoves(0.1)
+      return
+   end
+   if(arcAngle <0) then
+      post.ModalText (" G03")  --use circ moves
+   else
+      post.ModalText (" G02")  --use circ moves
+   end
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+
+function OnSpindleCW()
+   post.Text (" ( spindle on CW")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.Text (" ( spindle on CCW")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnSpindleOff()
+   post.Text (" ( spindle off")
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, "\n")
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(" (",commentText,"\n")
+end
+
+function OnToolChange()
+   post.Text (" M6 T")
+   post.Number (tool, "0")
+   post.Text ("  (", toolName, "\n")
+end
+
+
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+function OnFloodOn()
+   post.Text(" ( Flood on\n")
+end
+
+function OnMistOn()
+   post.Text(" ( mist on\n")
+end
+
+function OnCoolantOff()
+   post.Text(" ( coolant off\n")
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end

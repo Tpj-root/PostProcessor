@@ -1,0 +1,198 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Innerlogic plasma post for Mach2 and Innerlogic THC\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+
+--  created 14/8/06 based on plasma THC2.post
+
+
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G53\n G90\n G17\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   lastx = 0
+   lasty = 0
+   lasti = 0
+   lastj = 0
+   lastangle =0
+   lastmove = 0
+   thcstopped = 0
+   leadout = 0
+   newfeed = -1
+
+
+   --minimum radius for arcs. Below this radius THC is turned off
+   minrad = 10
+
+   --reduced feed percentage for small arcs (80 = 80% of full feed)
+   arcfeed = 80
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   endZ = safeZ
+   OnRapid()
+   post.Text (" M05\n M30\n")
+end
+
+function thcon()
+   if(leadout ==1) then
+      thcoff()
+      return
+   end
+   if(thcstopped == 1) then
+      post.Text(" M10P5\n")
+      newfeed = currentfeed
+      thcstopped = 0
+   end
+end
+
+function thcoff()
+   if(thcstopped == 0) then
+      post.Text(" M11P5\n")
+      newfeed = currentfeed * arcfeed / 100
+      thcstopped = 1
+   end
+end
+
+function checkmove()
+   if(newfeed<0) then 
+      newfeed = feedRate
+   end
+   if(lastmove == 0) then return end
+   if(lastmove == 1) then
+      thcon()
+      post.ModalText (" G01")
+      post.ModalNumber (" X", lastx * scale, "0.0000")
+      post.ModalNumber (" Y", lasty * scale, "0.0000")
+      post.ModalNumber (" F", newfeed * scale, "0.###")
+      post.Eol()
+   else
+      arcrad = math.hypot(lasti, lastj)
+      if(arcrad < minrad) then
+         thcoff()
+      else
+         thcon()
+      end
+      if(lastangle <0) then
+         post.ModalText (" G03")
+      else
+         post.ModalText (" G02")
+      end
+      post.ModalNumber (" X", lastx * scale, "0.0000")
+      post.ModalNumber (" Y", lasty * scale, "0.0000")
+      post.Text (" I")
+      post.Number (lasti * scale, "0.0000")
+      post.Text (" J")
+      post.Number (lastj * scale, "0.0000")
+      post.ModalNumber (" F", newfeed * scale, "0.0###")
+      post.Eol()
+   end
+   lastmove = 0
+end
+
+function OnRapid()
+   thcon()
+   if(currentX == endX and currentY == endY) then return end
+   checkmove()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   if(currentX == endX and currentY == endY) then return end
+   checkmove()
+   lastmove = 1
+   lastx = endX
+   lasty = endY
+end
+
+function OnArc()
+   checkmove()
+   lastmove = 2
+   lastangle = arcAngle
+   lastx = endX
+   lasty = endY
+   lasti = arcCentreX - currentX
+   lastj = arcCentreY - currentY
+end
+
+
+function OnPenDown()
+   if (preheat > 0) then
+      post.Text (" G04 P")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end
+   post.Text (" M03\n")
+   if (pierceDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   leadout = 1
+   checkmove()
+   leadout = 0
+   post.Text (" M05\n")
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+end
+
+function OnSetFeed()
+   currentfeed = feedRate
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+

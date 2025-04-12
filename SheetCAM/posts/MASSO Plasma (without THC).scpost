@@ -1,0 +1,208 @@
+--Version 0.1 - 11/09/2018
+
+--************************************************
+--*** Set these values up to suit your machine ***
+--************************************************
+
+--this is the reference feed rate in mm/min
+refFeed = 500
+
+
+--The cutter will slow down for corners and turn off THC below this radius
+slowRadius = 10
+
+--Minimum slow down speed.
+--This is a scale factor. For instance 0.5 = 50% of the current feed rate
+slowPercent = 0.4
+
+--************************************************
+--***           End of settings                ***
+--************************************************
+
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("MASSO post processor without THC\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJK\n")
+   ctrl:AppendText("Post variables:\n")
+   ctrl:AppendText("refFeed - set the feed rate when referencing\n")
+   ctrl:AppendText("slowRadius - slow down below this radius\n")
+   ctrl:AppendText("slowPercent - minimum percentage to slow down\n")
+end
+
+
+post.SetOptions(post.ARC_SEGMENTS)
+post.DefineVariable("refFeed",sc.unitFEED,0,1e17)
+post.DefineVariable("slowRadius",sc.unitLINEAR,-1e17,1e17)
+post.DefineVariable("slowPercent",sc.unitPERCENT,-1e17,1e17)
+
+function OnInit()
+
+   offX = 0
+   offY = 0
+   offZ = 0
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" \n G90\n")
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   currentZAxis = "Z"
+
+   dist = 9999999
+   lastz = 0
+   thcstate = 1
+
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   endZ = safeZ
+   OnRapid()
+   endX = 0
+   endY = 0
+   offX = 0
+   offY = 0
+   offZ = 0
+   OnRapid()
+   post.Text (" M05 M30 (---End of program---)\n")
+end
+
+function OnRapid()
+   if(endX > 1e17 and endY > 1e17) then return end
+   local len = math.hypot((endX + offX)-currentX , (endY + offY)-currentY)
+   dist = dist + len
+   post.ModalText (" G00")
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   if(offZ and currentZ ~= safeZ) then
+      post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   end
+   post.Eol()
+end
+
+function OnMove()
+   local len = math.hypot(endX - currentX , endY - currentY)
+   dist = dist + len
+
+   post.ModalText (" G01")
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   if(offZ) then
+      post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   end
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   local radius = math.hypot(currentX - arcCentreX, currentY - arcCentreY)
+   dist = dist + radius * math.abs(arcAngle)
+
+   if (radius < slowRadius) and (math.abs(arcAngle) > 0.5) then
+      feed = (radius / slowRadius)
+      if(feed < slowPercent) then
+         feed = slowPercent
+      end
+      feed = feed * feedRate
+   else
+      feed = feedRate
+   end
+   
+   if(arcAngle < 0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   
+   if(offZ) then
+      post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   end
+   
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feed * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   post.Text(" (---Go to pierce height---)\n")
+	post.ModalText (" G00")
+	post.Text(" Z")
+	post.Number (pierceHeight  * scale, "0.0000")
+
+	post.Eol()
+   
+	if (preheat > 0) then
+		post.Text ("\n G04 P")
+		post.Number (preheat * 1000,"0.###")
+		post.Eol()
+	end
+	
+	post.Text ("\n M03 (---Torch ON---)\n")
+ 
+	if (pierceDelay > 0) then
+		post.Text (" G04 P")
+		post.Number (pierceDelay * 1000,"0.###")
+		post.Eol()
+	end
+   
+   
+   post.Text(" (---Go to cutting height---)\n")
+   post.ModalText (" G00")
+   post.ModalNumber (" Z", cutHeight * scale, "0.0000")
+   post.Eol()
+	
+--   thcstate = 2 --leave THC off for plunge move
+end
+
+
+
+function OnPenUp()
+   post.Text (" M05 (---Torch OFF---)\n")
+ 
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay * 1000,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+

@@ -1,0 +1,131 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Mach3 plasma post processor for Rutex\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Generic plasma post for machines with Rutex TNC\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M0201/M0204 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("Delays in ms\n")
+end
+
+
+--   created 25/08/09
+--   Based on Mach3 plasma.post
+
+
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G53 G90 G91.1 G40\n F1\n")
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   currentX = -1
+   endX = 0
+   endY = 0
+   OnRapid()
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M30\n")
+end
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.0001) then return end
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.0001) then return end
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if (preheat > 0.001) then
+      post.Text ("G04 P")
+      post.Number (preheat * 1000,"0.###")
+      post.Eol()
+   end
+   post.Text (" M0201\n")
+   post.Text (" G04 P")
+   post.Number ((pierceDelay + 0.7) * 1000,"0.###")
+   post.Eol()
+end
+
+
+function OnPenUp()
+   post.Text (" M0204\n")
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay * 1000,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

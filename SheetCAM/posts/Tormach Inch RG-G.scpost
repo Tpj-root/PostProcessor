@@ -1,0 +1,371 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Tormach post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("uses G43 tool length offsets\n")
+   ctrl:AppendText("included codes for Cutviewer\n")
+end
+
+--  revision 12-11-09 (RG-G)
+--  made M998 at toolchange conditional (only for tools < 100, otherwise G00 Z3.0000 for Proxxon tools)
+
+--  revision 11-21-09 (RG-G)
+--  replaced 118 for drill tip angle with actual angle
+
+--  revision 10-20-09 (RG-G)
+--  removed Z move to clearance plane at end of toolchange
+--  2.0.3 fixed it
+
+--  revision 12-09-08 (RG-G)
+--  added Z move to clearance plane at end of toolchange
+
+--  revision 11-16-08 (RG-G)
+--  removed line numbers
+
+--  revision 8-16-07 (RG-G)
+--  changed M2 to M30
+
+--  revision 8-8-07 (RG-G)
+--  added M998 to toolchange and finish
+
+--  revision 11-13-06 (RG-G)
+--  four-place coordinates
+--  integer spindle speeds
+
+--  revision 20/7/06
+--  added Cutviewer code
+
+--  revision 25/5/06
+--  Revised rigid tapping spindle on/off sequencing
+
+--  revision 11/5/06
+--  Revised rigid tapping
+
+--  revision 4/5/06
+--  Revised tapping cycles
+
+--  revision 2/5/06
+--  Added tapping cycle
+
+--   revision 14/11/05
+--   Fixed circles for Mach2/earlier versions of Mach3
+
+--   revision 20/10/04
+--   added tool length offsets
+
+--   revision 25/10/04
+--   added G90.1 incremental IJ mode
+
+--   revision 28/7/04
+--   Added drill start depth
+
+--   revision 19/7/04
+--   added drill cycle
+
+--   revision 28/6/04
+--   Replaced startx,y,z with currentx,y,z
+
+--   Revision 28/5/04
+--   Unbodged first rapid move - main app is fixed now
+--   Added plunge,feed,spindle speed warnings
+
+--   Revision 25/5/04
+--   fixed feed rate problem and bodged first rapid move
+
+--   Revision 18/5/04
+--   Added Metric + Inch variables and easy inch/metric swapping
+--   changed to fixed number of trailing zeros
+
+--   Created 11/5/2004
+
+function OnInit()
+--   lineNumber = 10
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text ("(Filename: ", fileName, ")\n")
+   post.Text ("(Post processor: ", postName, ")\n")
+   post.Text ("(Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text ("G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text ("G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text ("G17 G40 G80 G90\nF1\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+
+   post.Text("(STOCK/BLOCK")
+   post.NonModalNumber(",",(materialX2 - materialX1) * scale,"0.####")
+   post.NonModalNumber(",",(materialY2 - materialY1) * scale,"0.####")
+   post.NonModalNumber(",",materialThick * scale,"0.####")
+   post.NonModalNumber(",",-materialX1 * scale,"0.####")
+   post.NonModalNumber(",",-materialY1 * scale,"0.####")
+   post.NonModalNumber(",",materialThick * scale,"0.####")
+   post.Text(")\n(TOOL/MILL,.001,0,1,0)")  --a dummy tool to keep Cutviewer quiet
+   post.Eol()
+end
+
+function OnNewLine()
+--   post.Text ("N")
+--   post.Number (lineNumber, "0000")
+--   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text ("M998\nM30\n")
+end
+
+function OnRapid()
+   post.Text ("G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.Text ("G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.ModalNumber (" S", spindleSpeed, "0")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text ("G03")
+   else
+      post.Text ("G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.ModalNumber (" S", spindleSpeed, "0")
+   post.Eol()
+end
+
+function OnSpindleCW()
+   post.Text ("M03")
+   post.ModalNumber (" S", spindleSpeed, "0")
+   post.Text(" (spindle CW)")
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.Text ("M04")
+   post.ModalNumber (" S", spindleSpeed, "0")
+   post.Text(" (spindle CCW)")
+   post.Eol()
+end
+
+function OnSpindleOff()
+   post.Text ("M05 (spindle off)\n")
+end
+
+function OnNewOperation()
+   post.Text ("(Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text("(",commentText,")\n")
+end
+
+function OnToolChange()
+   if(tool >= 100) then
+      post.Text("G00 Z3.0000\n")
+   else
+      post.Text("M998\n")
+   end
+   post.Text ("M06 T")
+   post.Number (tool, "0")
+   post.Text (" G43 H")
+   post.Number (tool, "0")
+   post.Text(" (TOOL/")
+   if(toolType == 0 or toolType ==5 or toolType ==6) then --mill or tap
+      post.Text("MILL")
+      post.NonModalNumber(",",toolDia * scale,"0.####")
+      post.NonModalNumber(",0,",toolFluteLength * scale,"0.####")
+      post.Text(",0")
+   end
+   if(toolType == 1) then --drill
+      post.Text("DRILL")
+      post.NonModalNumber(",",toolDia * scale,"0.####")
+      post.NonModalNumber(",",toolAngle * 57.296,"0.####")
+      post.NonModalNumber(",",toolFluteLength * scale,"0.####")
+   end
+   if(toolType == 2) then --V cutter
+      post.Text("MILL")
+      post.NonModalNumber(",",toolDia * scale,"0.####")
+      post.NonModalNumber(",0,",toolFluteLength * scale,"0.####")
+      post.NonModalNumber(",",toolAngle * 28.648,"0.####")
+   end
+   post.Text(")\n")
+--   text ("  (", toolname, ")\n")
+--   post.Eol()
+--   post.ModalText ("G00")
+--   post.NonModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+--   post.Text ("\n")
+end
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+function OnNewPart()
+   post.Text("(Part: ",partName,")\n");
+end
+
+function OnFloodOn()
+   post.Text("M08 (Flood coolant on)\n")
+end
+
+function OnMistOn()
+   post.Text("M07 (Mist coolant on)\n")
+end
+
+function OnCoolantOff()
+   post.Text("M09 (Coolant off)\n")
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end
+
+function OnSetFeed()
+end
+
+function OnTapStart()
+   post.Text("M49\n") --disable FRO
+   post.Text("G95\n") --feed per rev
+end
+
+function OnAutoTap()
+   clearance = 1 --tapping clearance height
+
+--move to hole X,Y coordinates
+   OnRapid()
+
+--move to tapping clearance height
+   clearance = clearance + drillStart
+   endZ = clearance
+   OnRapid()
+
+--feed to depth
+   feedRate = tapPitch * underFeed
+   OnSetFeed()
+   endZ = drillZ
+   OnMove()
+
+--retract to engage reverse clutch
+   endZ = drillZ + tapTravel
+   OnRapid()
+
+--feed out
+   feedRate = tapPitch * reverseMult * underFeed
+   endZ = tapTravel + clearance
+   OnMove()
+
+--retract to clearance plane
+   endZ = safeZ
+   OnRapid()
+
+end
+
+function OnRigidTap()
+   clearance = 1 --tapping clearance height
+
+   spindlecache = spindleSpeed
+
+--spindle forwards
+   if(spindleDir == 1) then
+      OnSpindleCW()
+   else
+      OnSpindleCCW()
+   end
+
+
+--move to hole X,Y coordinates
+   OnRapid()
+
+--move to tapping clearance height
+   endZ = clearance + drillStart
+   OnRapid()
+
+--tap to depth, correcting for underfeed
+   feedRate = tapPitch * underFeed
+   OnSetFeed()
+   depthfix = (drillStart - drillZ) * (1 - underFeed)
+   endZ = drillZ + depthfix
+   OnMove()
+
+--reverse spindle
+   OnSpindleOff()
+   spindleSpeed = spindlecache * reverseMult
+   if(spindleDir == -1) then
+      OnSpindleCW()
+   else
+      OnSpindleCCW()
+   end
+
+--feed out
+   feedRate = tapPitch * reverseMult * underFeed
+   OnSetFeed()
+   endZ = clearance + drillStart
+   OnMove()
+
+--stop spindle and restore speed to tapping speed
+   OnSpindleOff()
+   spindleSpeed = spindlecache
+
+
+--retract to clearance plane
+   endZ = safeZ
+   OnRapid() --retract to clearance plane
+
+end
+
+function OnTapEnd()
+   post.Text("M48\n") --enable FRO
+   post.Text("G94\n") --feed per min
+end

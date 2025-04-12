@@ -1,0 +1,147 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("HPGL 3D post processor\n")
+   ctrl:AppendText(" \n")
+   ctrl:AppendText("Outputs a 3D version of HPGL\n")
+end
+
+
+--  revision 3/2/07 
+--  Removed final safety move. This is now done in SheetCam
+
+--   created 10/04/06
+
+
+
+function OnInit()
+   scale = 40
+   post.Text("IN;\nPA;\n")
+   arcscale = -57.2957795130
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   lastinst = 0
+end
+
+function OnNewLine()
+end
+
+
+function OnFinish()
+   post.Text("\n")
+end
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.Text("PU ")
+   post.Number ( endX * scale, "0")
+   post.Text(",")
+   post.Number ( endY * scale, "0")
+   post.Text(",")
+   post.Number ( (safeZ - endZ) * scale, "0")
+   post.Text(";\n")
+   lastinst = 0
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.Text("PD")
+   post.Text(" ")
+   post.Number ( endX * scale, "0")
+   post.Text(",")
+   post.Number ( endY * scale, "0")
+   post.Text(",")
+   post.Number ( (safeZ - endZ) * scale, "0")
+   post.Text(";\n")
+   lastinst = 1
+end
+
+function OnArc()
+   if(lastinst == 0) then
+      post.Text("PD;")
+   end
+   post.Text("AA ");
+   post.Number ( arcCentreX * scale, "0")
+   post.Text(",")
+   post.Number ( arcCentreY * scale, "0")
+   post.Text(",")
+   post.Number ( arcAngle * arcscale, "0.####")
+   post.Text(";\n")
+   lastinst = 2
+end
+
+function OnPenDown()
+end
+
+
+function OnPenUp()
+end
+
+function OnSpindleCW()
+
+end
+
+function OnSpindleCCW()
+
+end
+
+function OnSpindleOff()
+
+end
+
+
+function OnNewOperation()
+
+end
+
+function OnToolChange()
+   post.Text("\nSP")
+   post.Number (tool,"0")
+   post.Text(";\n")
+   lastinst = 0
+end
+
+function OnSpindleChanged()
+end
+
+function OnNewPart()
+end
+
+
+function OnFloodOn()
+end
+
+function OnMistOn()
+end
+
+function OnCoolantOff()
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = 0.5
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+  end
+   while depth > drillZ do
+      endZ = depth + buffer
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end

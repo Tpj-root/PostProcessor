@@ -1,0 +1,155 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Amada LCR645 laser cutter post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--   created 03/03/08
+--   Based on Mach2 plasma.post
+
+post.DefineCustomToolParam("LaserTool", "Pierce gas", "pierceGas", sc.unit0DECPLACE, 63, 63, 67)
+post.DefineCustomToolParam("LaserTool", "Pierce pulse", "piercePulse", sc.unit0DECPLACE, 91, 90, 94)
+post.DefineCustomToolParam("LaserTool", "Pierce power", "piercePower", sc.unit0DECPLACE, 50, 0, 1000)
+post.DefineCustomToolParam("LaserTool", "Cut gas", "cutGas", sc.unit0DECPLACE, 63, 63, 67)
+post.DefineCustomToolParam("LaserTool", "Cut pulse", "cutPulse", sc.unit0DECPLACE, 91, 90, 94)
+post.DefineCustomToolParam("LaserTool", "Cut power", "cutPower", sc.unit0DECPLACE, 50, 0, 1000)
+
+function OnInit()
+   post.Text("%\n")
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text(":0001;\n")
+--[[   post.Text ("(Filename: ", fileName, ");\n")
+   post.Text ("(Post processor: ", postName, ");\n")
+   post.Text ("(Date: ", date, ");\n")
+]]
+--[[
+   if(scale == metric) then
+      post.Text ("G21 (Units: Metric);\n") --metric mode
+   else
+      post.Text ("G20 (Units: Inches);\n") --inch mode
+   end
+]]
+   post.Text("G90 G92 X1270. Y1000.;\n")
+   post.Text("G93 Z")
+   post.Number(materialThick * scale, "0.0#")
+   post.Text(";\n")
+   post.Text("G65 P8001 Z1")
+--   post.Number(safeZ * scale, "0")
+   post.Text(";\n")
+--   post.Text("G65 P8000 S500 B91 J0.5 T93 I64 J0;\n")
+   post.Text ("G90;\n")
+   post.Text("G00 G40;\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   firstPart = true
+end
+
+
+
+function OnFinish()
+   post.Text ("G93 X0 Y0 Z0;\nM80;\nM80;\nG70;\nM30;\n")
+   post.Text("%\n")
+end
+
+function OnRapid()
+   if(endX > 1e10 or endY > 1e10) then return end
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText ("G00")
+   post.ModalNumber (" X", endX * scale, "0.0#")
+   post.ModalNumber (" Y", endY * scale, "0.0#")
+   post.Text(";\n")
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText ("G01")
+   post.ModalNumber ("X", endX * scale, "0.0#")
+   post.ModalNumber ("Y", endY * scale, "0.0#")
+   post.ModalNumber ("F", feedRate * scale, "0")
+   post.Text(";\n")
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText ("G03")
+   else
+      post.ModalText ("G02")
+   end
+   post.NonModalNumber ("X", endX * scale, "0.0#")
+   post.NonModalNumber ("Y", endY * scale, "0.0#")
+--   post.ModalNumber ("Z", endZ * scale, "0.0#")
+   post.Text ("I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0#")
+--   post.Number ((arcCentreX) * scale, "0.0#")
+   post.Text ("J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0#")
+--   post.Number ((arcCentreY) * scale, "0.0#")
+   post.ModalNumber ("F", feedRate * scale, "0")
+   post.Text(";\n")
+end
+
+
+function OnPenDown()
+   post.Text("M98 P100;\n")
+   post.NonModalNumber("S", cutPower, "0")
+   post.NonModalNumber ("F", feedRate * scale, "0")
+   post.Text(";\n")
+   post.Text ("M60;\n")
+end
+
+
+function OnPenUp()
+   post.Text ("M61;\n")
+end
+
+
+function OnNewOperation()
+   post.Text ("(Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   if(toolClass ~= "LaserTool") then return end
+   post.Text ("(", toolName, ")\n")
+   post.Text("G65 P8000 S")
+   post.Number(piercePower,"0")
+   post.Text(" B")
+   post.Number(piercePulse,"0")
+   post.Text(" I")
+   post.Number(pierceGas,"0")
+   post.Text(" J")
+   post.Number(pierceDelay,"0.0##")
+   post.Text(" T")
+   post.Number(cutPulse,"0")
+   post.Text(" I")
+   post.Number(cutGas,"0")
+   post.Text(" J0")
+   post.Text(";\n")
+--   post.Text("G11 I20. Q5. K0 A100 S1000 F500 D0;\n")
+end
+
+function OnNewPart()
+   if not firstPart then
+      post.Text("M80\n")
+   end
+   firstPart = false
+   post.Text("(Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

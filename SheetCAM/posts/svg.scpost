@@ -1,0 +1,67 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("SVG post processor\n")
+end
+
+post.ForceExtension("svg")
+
+
+function OnInit()
+   post.SetOptions(post.ARC_SEGMENTS)
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   post.Text('<?xml version="1.0" standalone="no"?>\n')
+   post.Text('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n')
+   post.Text('<svg version="1.1" width = "10000mm" height="10000mm" xmlns="http://www.w3.org/2000/svg" viewbox="0 0 10000 10000">\n')
+end
+
+
+function OnFinish()
+   post.Text ('</svg>\n')
+end
+
+function OnPenDown()
+   post.Text('<path d="M')
+   post.Number(endX, "0.######")
+   post.Text(',')
+   post.Number(10000-endY, "0.######")
+   post.Text(' ')
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.0001) then return end
+   post.Text('L')
+   post.Number(endX, "0.######")
+   post.Text(',')
+   post.Number(10000-endY, "0.######")
+   post.Text(' ')
+end
+
+function OnArc()
+   local r = math.hypot(currentX - arcCentreX, currentY - arcCentreY)
+   post.Text('A')
+   post.Number(r, "0.######")
+   post.Text(',')
+   post.Number(r, "0.######")
+   post.Text(' 0 ')
+   if(math.abs(arcAngle) > math.pi) then
+      post.Text('1,')
+   else
+      post.Text('0,')
+   end
+   if(arcAngle < 0) then
+      post.Text('0 ')
+   else
+      post.Text('1 ')
+   end
+   post.Number(endX, "0.######")
+   post.Text(',')
+   post.Number(10000-endY, "0.######")
+   post.Text(' ')
+end
+
+function OnPenUp()
+   post.Text('"/>\n')
+end
+
+function OnDrill()
+end

@@ -1,0 +1,167 @@
+--Configuration options
+
+--Set this to multiply by the number of decimal places your machine uses in metric format.
+--Inch format will automatically multiply this by 10.
+--For instance 1 decimal place will be 10, 2 decimals will be 100, 3 will be 1000 and so on
+decimals = 10
+
+
+--Initialization code. Separate each command with \n
+initCode = "38\n"
+
+--Tape end code. Separate each command with \n
+endCode = "99\n"
+
+
+--set true for absolute, false for relative
+absolute = false
+
+--end of configuration options
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("ESSI (ISO 6582) post\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Codes 53/54 turn plasma on/off\n")
+   ctrl:AppendText("Codes 7/8 turn flame on/off\n")
+   ctrl:AppendText("Codes 9/10 turn punch marker on/off\n")
+end
+
+
+--   Created 30/6/2006
+
+
+
+function OnInit()
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   if (scale == metric) then
+      post.Text("71\n")
+      scale = scale * decimals
+      post.Text("3\nMETRIC\n4\n")
+   else
+      post.Text("70\n")
+      scale = scale * 10 * decimals
+      post.Text("3\nINCH\n4\n")
+   end
+   if absolute then
+      post.Text("82\n")
+      post.Text("3\nABSOLUTE\n4\n")
+   else
+      post.Text("81\n")
+      post.Text("3\nRELATIVE\n4\n")
+   end
+   curx =0
+   cury =0
+   firstmove = 1
+   post.Text(initCode)
+end
+
+
+function OnFinish()
+   OnPenUp()
+   endX = 0
+   endY = 0
+   OnRapid()
+   post.Text(endCode)
+end
+
+function OnRapid()
+   if(firstmove == 1) then
+      firstmove=0
+      return
+   end
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.Text("5\n")
+   doxy()
+   post.Eol()
+   post.Text("6\n")
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   doxy()
+   post.Eol()
+end
+
+function doxy()
+   if(endX >= 1e10 and endY >= 1e10) then return end
+   local tmpX
+   local tmpY
+   tmpX = 0
+   tmpY = 0
+   if absolute then
+      if(endX < 1e10) then
+          tmpX = math.toint(endX * scale)
+      end
+      if(endY < 1e10) then
+          tmpY = math.toint(endY * scale)
+      end
+   else
+      if(endX < 1e10) then
+          tmpX = (endX * scale) - curx
+          tmpX = math.toint(tmpX)
+          curx = curx + tmpX
+      end
+      if(endY < 1e10) then
+          tmpY = (endY * scale) - cury
+          tmpY = math.toint(tmpY)
+          cury = cury + tmpY
+      end
+   end
+   donumber(tmpX)
+   donumber(tmpY)
+   
+end
+
+function OnArc()
+   doxy()
+   if absolute then
+      donumber (arcCentreX * scale)
+      donumber (arcCentreY * scale)
+   else
+      donumber ((arcCentreX - currentX) * scale)
+      donumber ((arcCentreY - currentY) * scale)
+   end
+   if(arcAngle <0) then
+      post.Text ("+")
+   else
+      post.Text ("-")
+   end
+   post.Eol()
+end
+
+function donumber(num)
+   num = math.toint(num)
+   if(num == 0) then
+      post.Text("+");
+   else
+      post.Number(num,"+0");
+   end
+end
+
+function OnPenDown()
+   if(toolClass == "FlameTool") then --flame
+      post.Text("7\n"); --flame
+   else if(toolClass == "MarkerTool") then
+      post.Text("9\n")
+      else
+         post.Text("53\n"); --plasma
+      end
+   end
+end
+
+function OnPenUp()
+   if(toolClass == "FlameTool") then --flame
+      post.Text("8\n"); --flame
+   else if(toolClass == "MarkerTool") then
+      post.Text("10\n")
+      else
+         post.Text("54\n"); --plasma
+      end
+   end
+end
+
+
+
+

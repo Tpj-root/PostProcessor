@@ -1,0 +1,174 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Bridgeport 32DX post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Absolute IJ\n")
+end
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+
+--  created 13/4/06
+--  based on Mach2.post
+
+function OnInit()
+   lineNumber = 10
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+--   if(scale == metric) then
+--      text (" G21;\n") --metric mode
+--   else
+--      text (" G20;\n") --inch mode
+--   end
+   post.Text (" G70 G75 G40 G90;\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M05 M30\n")
+end
+
+function OnRapid()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Text(";\n")
+end
+
+function OnMove()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.ModalNumber (" S", spindleSpeed, "0")
+   post.Text(";\n")
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY) * scale, "0.0000")
+   post.ModalNumber (" S", spindleSpeed, "0")
+   post.Text(";\n")
+end
+
+
+function OnSpindleCW()
+   post.Text (" M03")
+   post.ModalNumber (" S", spindleSpeed, "0")
+   post.Text(";\n")
+end
+
+function OnSpindleCCW()
+   post.Text (" M04")
+   post.ModalNumber (" S", spindleSpeed, "0")
+   post.Text(";\n")
+end
+
+function OnSpindleOff()
+   post.Text (" M05;\n")
+end
+
+function OnSetFeed()
+   post.NonModalNumber (" F", feedRate * scale, "0")
+   post.Text(".;\n")
+end
+
+
+function OnNewOperation()
+   post.Text (" ;, Operation: ", operationName, "\n")
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   post.Text (" ;,", toolName, "\n")
+   post.Text (" M6 T")
+   post.Number (tool, "0")
+   post.Text(";\n")
+end
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+function OnNewPart()
+   post.Text(" ;, Part: ",partName,")\n");
+end
+
+
+function OnFloodOn()
+   post.Text(" M08;\n")
+end
+
+function OnMistOn()
+   post.Text(" M07;\n")
+end
+
+function OnCoolantOff()
+   post.Text(" M09;\n")
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end

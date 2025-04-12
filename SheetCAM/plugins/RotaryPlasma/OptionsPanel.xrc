@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<resource xmlns="http://www.wxwidgets.org/wxxrc">
+	<object class="wxPanel" name="OptionsPanel">
+		<object class="wxBoxSizer">
+			<orient>wxVERTICAL</orient>
+			<object class="sizeritem">
+				<object class="wxBoxSizer">
+					<orient>wxVERTICAL</orient>
+					<object class="sizeritem">
+						<object class="wxStaticBoxSizer">
+							<label>Special options</label>
+							<orient>wxVERTICAL</orient>
+							<object class="sizeritem">
+								<object class="wxFlexGridSizer">
+									<cols>2</cols>
+									<vgap>3d</vgap>
+									<hgap>3d</hgap>
+									<object class="sizeritem">
+										<object class="wxStaticText" name="ID_STATICTEXT2">
+											<label>Update rate</label>
+										</object>
+										<flag>wxALL|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+									</object>
+									<object class="sizeritem">
+										<object class="wxTextCtrl" name="ID_FRAMERATE" subclass="UnitCtrl" />
+										<flag>wxEXPAND</flag>
+									</object>
+									<object class="sizeritem">
+										<object class="wxStaticText" name="ID_STATICTEXT3">
+											<label>Rapid feed</label>
+										</object>
+										<flag>wxALL|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+									</object>
+									<object class="sizeritem">
+										<object class="wxTextCtrl" name="ID_RAPIDFEED" subclass="UnitCtrl" />
+										<flag>wxEXPAND</flag>
+									</object>
+									<object class="sizeritem">
+										<object class="wxStaticText" name="ID_STATICTEXT9">
+											<label>Maximum FRO</label>
+										</object>
+										<flag>wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+										<border>5</border>
+									</object>
+									<object class="sizeritem">
+										<object class="wxTextCtrl" name="ID_MAXFRO" subclass="UnitCtrl" />
+										<flag>wxEXPAND</flag>
+										<border>5</border>
+									</object>
+								</object>
+								<flag>wxALL|wxEXPAND</flag>
+								<option>1</option>
+							</object>
+							<object class="sizeritem">
+								<object class="wxStaticText" name="ID_STATICTEXT4">
+									<label>Note: increasing the update rate&#x0A;makes movement smoother &#x0A;but uses more CPU power.</label>
+								</object>
+								<flag>wxTOP|wxALIGN_CENTER_HORIZONTAL</flag>
+								<border>3d</border>
+							</object>
+						</object>
+						<flag>wxALL|wxEXPAND</flag>
+						<border>3d</border>
+					</object>
+					<object class="sizeritem">
+						<object class="wxStaticBoxSizer">
+							<label>Machine type</label>
+							<object class="sizeritem">
+								<object class="wxChoice" name="ID_MACHINETYPE" />
+								<flag>wxALL|wxEXPAND</flag>
+								<border>3d</border>
+							</object>
+						</object>
+						<flag>wxALIGN_CENTER_HORIZONTAL</flag>
+						<border>0d</border>
+					</object>
+					<object class="sizeritem">
+						<object class="wxBoxSizer">
+							<orient>wxVERTICAL</orient>
+						</object>
+						<flag>wxEXPAND</flag>
+						<border>5</border>
+					</object>
+				</object>
+				<flag>wxALL|wxALIGN_CENTER_HORIZONTAL</flag>
+				<border>5</border>
+				<option>1</option>
+			</object>
+		</object>
+	</object>
+</resource>

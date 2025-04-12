@@ -1,0 +1,359 @@
+--************************************************
+--*** Set these values up to suit your machine ***
+--************************************************
+
+--Put your switch offset value here in MILLIMETRES
+--Put a sheet of metal on your machine and place a sheet of paper on top.
+--Slowly jog the torch down onto the paper until the touch-off switch just operates.
+--Zero the Z axis then pull gently on the paper and slowly jog up until the paper slides out.
+--The Z axis position is your switch offset.
+switchOffset = 1.5
+
+--Scriber X,Y,Z offsets in MILLIMETRES. Do not use inches here even if you want inch code
+--Use the special code 'nil' on the Z axis to disable it.
+--In that case no Z values will be output at all while scribing.
+--e.g scriberZ = nil
+scriberX = 110
+scriberY = 220
+scriberZ = 0
+
+--scriber axis. Leave this as nil if the scriber is fixed to the same axis as the torch
+--scriberAxis = "A"
+scriberAxis = "K"
+
+--THC off code. Use nil if you don't want to turn off THC when enabling the scriber e.g:
+-- thcOffCode = nil
+thcOffCode = " M63P4"
+
+--Torch on and off codes.
+torchOnCode = " M62P3"
+torchOffCode = " M63P3"
+
+
+
+--Code to use when referencing
+refCode=" G31.0 Z-10"
+
+
+--************************************************
+--***           End of settings                ***
+--************************************************
+
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Mach4 + SmootStepper with TMC3in1\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Post variables:\n")
+   ctrl:AppendText("refDistance - set the distance between each reference\n")
+   ctrl:AppendText("refFeed - set the feed rate when referencing\n")
+
+   local window = ctrl:GetParent()
+   local btn = wx.wxButton(window, wx.wxID_ANY, "Set custom post options")
+   btn:Connect(wx.wxID_ANY, wx.wxEVT_COMMAND_BUTTON_CLICKED, OnButton)
+   ctrl:GetContainingSizer():Insert(2, btn, 0, wx.wxALL, 5)
+   end
+
+function OnButton(evt)
+    post.ShowCustomOptions("Post settings")
+end
+
+
+--These appear in Options-Machine->Post processor->Set custom post options
+--see the docs for 'DefineCustomOption' to see what these values mean.
+
+varDefs={
+--The modes used below are
+--0=Appears in 'Options-Machine->Post processor->Set custom post options' and in a 'Set post processor variable' operation
+--1=Appears in tool definition
+
+--the following are not automatically output as an M2020 value
+--2=Appears in 'Options-Machine->Post processor->Set custom post options' and in a 'Set post processor variable' operation
+--3=Appears in 'Options-Machine->Post processor->Set custom post options' only
+
+--    Description,               ,  variable name              ,  units             ,min  ,max  ,default ,scale, mode
+{"Distance between references"   , "refDistance"               , sc.unitLINEAR      ,0    ,1e17 ,250     ,1    ,2},
+{"Reference feed rate"           , "refFeed"                   , sc.unitFEED        ,0    ,1e17 ,500     ,1    ,2},
+{"Extra delay for first pierce"  , "firstDelay"                , sc.unitTIME        ,0    ,1e17 ,0       ,1    ,3},
+
+{"THC Z max limit"               , "HC_Z_MAX_VALUE"            , sc.unitLINEAR      ,0    ,1e17 ,25      ,1    ,0},
+{"THC Z min limit"               , "HC_Z_MIN_VALUE"            , sc.unitLINEAR      ,0    ,1e17 ,3       ,1    ,0},
+{"Enable THC arc delay"          , "TMC3IN1_AD1_DELAY_ENABLED" , sc.unit0DECPLACE   ,0    ,1    , 1      ,1    ,0},
+{"THC arc delay"                 , "TMC3IN1_AD1_DELAY_VALUE"   , sc.unitTIME        ,0    ,10   ,0.8     ,1    ,0},
+{"Enable M62/M63"                ,"TMC3IN1_AD2_M62_M63_ENABLED", sc.unit0DECPLACE   ,0    ,1    ,1       ,1    ,0},
+{"Enable velocity antidive"      ,"TMC3IN1_AD3_VELOCITY_ENABLED", sc.unit0DECPLACE  ,0    ,1    ,1       ,1    ,0},
+{"Velocity antidive"             ,"TMC3IN1_AD3_VELOCITY_PERCENT",sc.unitPERCENT     ,0    ,1    ,0.95    ,100  ,1},
+{"Enable voltage antidive"       ,"TMC3IN1_AD4_VOLTAGE_ENABLED", sc.unit0DECPLACE   ,0    ,1    ,1       ,1    ,0},
+{"ATV sample buffer"             ,"TMC3IN1_AD4_VOLTAGE_BUFFER" , sc.unitTIME        ,0.001,0.8  ,0.8     ,1000 ,0},
+{"Voltage change percent", "TMC3IN1_AD4_VOLTAGE_CHANGE_PERCENT", sc.unitPERCENT     ,0    ,10   ,0.0401  ,100  ,0},
+{"Voltage response percent","TMC3IN1_AD4_VOLTAGE_RESPONSE_PERCENT", sc.unitPERCENT  ,0    ,10   ,0       ,100  ,0},
+{"Inhibit voltage above"         ,"TMC3IN1_AD5_VOLTAGE_ABOVE"  , sc.unit0DECPLACE   ,0    ,50   ,15.1    ,1    ,0},
+{"Inhibit voltage below"         ,"TMC3IN1_AD5_VOLTAGE_ABOVE"  , sc.unit0DECPLACE   ,0    ,50   ,14.4    ,1    ,0},
+{"Target tip voltage"            ,"TMC3IN1_TARGET_TIP_VOLTS"   , sc.unit0DECPLACE   ,50   ,250  ,115     ,1    ,1},
+{"Tip voltage deadband"          ,"TMC3IN1_TARGET_BAND_VOLTS"  , sc.unit0DECPLACE   ,0    ,20   ,3.1     ,1    ,0},
+{"Response window above","TMC3IN1_LINEAR_RESPONSE_BAND_VOLTS_ABOVE", sc.unit0DECPLACE,0   ,50   ,15.1    ,1    ,0},
+{"Response window below","TMC3IN1_LINEAR_RESPONSE_BAND_VOLTS_BELOW", sc.unit0DECPLACE,0   ,50   ,25.2    ,1    ,0},
+}
+
+for i, def in ipairs(varDefs) do
+   local mode = def[8]
+   if(mode == 1) then
+      post.DefineCustomToolParam("PlasmaTool", def[1],def[2],def[3],def[6],def[4],def[5])
+   else
+      post.DefineCustomOption(def[1],def[2],def[3],def[4],def[5],def[6])
+      if mode < 3 then
+         post.DefineVariable(def[2],def[3],def[4],def[5])
+      end
+   end
+end
+
+varVals={}
+function CheckOptions()
+   local found = false;
+   for i, def in ipairs(varDefs) do
+      local varName = def[2]
+      if(_G[varName] ~= varVals[varName] and def[8] < 2) then
+         varVals[varName] = _G[varName]
+         found = true
+         local mult = def[7]
+         if(def[3] == sc.unitLINEAR) then mult = mult * scale end
+         post.Text(" M2020 (", varName,"=")
+         post.Number(_G[varName] * mult, "0.##")
+         post.Text(")\n");
+      end
+   end
+   if found then
+         post.Text(" G4 P0.1\n")
+   end
+end
+
+function OnInit()
+   varVals={}
+   dist=1e17
+   offX = 0
+   offY = 0
+   offZ = 0
+   post.TextDirect("%\n")
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G53 G90 G91.1 G40\n")
+
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   firstRef = true
+   currentZAxis = "Z"
+
+   lastz = 0
+   thcstate = 1
+   extraDelay = firstDelay
+   post.Text(" M2020 (TMC3IN1_AD3_VELOCITY_ENABLED=1)\n")
+   CheckOptions()
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text(" M63P4")
+   endZ = safeZ + 0.1 --force a Z move
+   OnRapid()
+   post.Text (" G92.1\n M30\n")
+   post.TextDirect("%\n")
+end
+
+function OnRapid()
+   if(endX > 1e17 and endY > 1e17) then return end
+   local len = math.hypot((endX + offX)-currentX , (endY + offY)-currentY)
+   dist = dist + len
+   post.ModalText (" G00")
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   if(offZ and firstRef == false and currentZ ~= safeZ) then
+      post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   end
+   post.Eol()
+end
+
+function OnMove()
+   local len = math.hypot(endX - currentX , endY - currentY)
+   dist = dist + len
+   post.ModalText (" G01")
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   if(offZ) then
+      post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   end
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   local radius = math.hypot(currentX - arcCentreX, currentY - arcCentreY)
+   dist = dist + radius * math.abs(arcAngle)
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   if(offZ) then
+      post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   end
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function ThcOff()
+   if(not thcOffCode) then return end
+   post.Text(thcOffCode)
+end
+
+
+function OnPenDown()
+   if(toolClass == "MarkerTool") then
+      if (firstRef) then
+         Reference()
+         post.ModalText (" G00")
+         post.Text(" Z")
+         post.Number (safeZ  * scale, "0.0000")
+         post.Eol()
+         offX = scriberX
+         offY = scriberY
+         offZ = scriberZ
+         post.ModalNumber (" X", (currentX + offX) * scale, "0.0000")
+         post.ModalNumber (" Y", (currentY + offY) * scale, "0.0000")
+         post.Eol()
+      end
+      if (offZ) then
+         post.ModalText (" G00")
+         post.ModalNumber (" " .. currentZAxis, (cutHeight + offZ)  * scale, "0.0000")
+         post.Eol()
+      end
+      post.Text(" M08\n")
+   else
+      if(dist >= refDistance) then
+         dist = 0
+         Reference();
+      end
+      post.ModalText (" G00")
+      post.Text(" Z")
+      post.Number (pierceHeight  * scale, "0.0000")
+      post.Eol()
+      if (preheat > 0) then
+         post.Text ("\n G04 P")
+         post.Number (preheat,"0.###")
+         post.Eol()
+      end
+      post.Text ("\n G4 P0.001\n", torchOnCode, " \n")
+      post.ModalText (" G00")
+      post.Text(" Z")
+      post.Number ((pierceHeight - 0.1)  * scale, "0.0000") --force a small move
+      post.Eol()
+
+   end
+   if (pierceDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (pierceDelay + extraDelay,"0.###")
+      post.Eol()
+      extraDelay = 0;
+   end
+--   thcstate = 2 --leave THC off for plunge move
+end
+
+
+function Reference()
+   firstRef = false
+   post.ModalText(refCode)
+   post.ModalNumber (" F", refFeed * scale, "0.0###")
+   post.Eol()
+   post.Text (" G91 G00")
+   post.Text(" Z")
+   post.Number (switchOffset * scale, "0.0000")
+   post.Eol()
+   post.Text(" G90\n G92 Z0.0\n")
+   post.Text(" m2020 (HC_WORK_Z_ZEROED=1)\n G4 P0.1\n")
+end
+
+function OnPenUp()
+   if(toolClass == "MarkerTool") then
+      post.Text(" M09\n")
+   else
+      post.Text (torchOffCode, "\n")
+   end
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+   CheckOptions()
+end
+
+function OnToolChange()
+   if (toolClass == "MarkerTool") then
+         ThcOff()
+         if(scriberAxis and scriberAxis ~= currentZAxis) then
+            endZ = safeZ
+            OnRapid()
+            currentZAxis = scriberAxis
+         end
+         if(firstRef ~= true) then
+            offX = scriberX
+            offY = scriberY
+            offZ = scriberZ
+         end
+   else
+         if(scriberAxis and scriberAxis == currentZAxis) then
+            endZ = safeZ
+            OnRapid()
+            currentZAxis = "Z"
+         end
+         offX = 0
+         offY = 0
+         offZ = 0
+   end
+   CheckOptions()
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   currentX = endX
+   currentY = endY
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end
+
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end

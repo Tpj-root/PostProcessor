@@ -1,0 +1,316 @@
+--************************************************
+--*** Set these values up to suit your machine ***
+--************************************************
+
+--this is the distance between each torch reference in MILLIMETRES
+refDistance = 250
+
+--this is the reference feed rate in mm/min
+refFeed = 500
+
+--Put your switch offset value here in MILLIMETRES
+switchOffset = 1.5
+
+--If this value is set to true then use G28 (home) for the Z reference
+--Set it to false for G31 probe
+refHome = true
+
+--Uses custom reference macro. This replaces the three settings above.
+-- for instance customRef = " M109" will output M109 when the torch needs to reference.
+
+customRef = nil
+
+--The cutter will slow down for corners and turn off THC below this radius
+slowRadius = 10
+
+--Minimum slow down speed.
+--This is a scale factor. For instance 0.5 = 50% of the current feed rate
+slowPercent = 0.4
+
+--THC on and off codes. Use nil if you don't want THC control e.g:
+-- thcOnCode = nil
+-- thcOffCode = nil
+
+--here is another example that use M667 and M666
+--thcOnCode = " M667"
+--thcOffCode = " M666"
+
+thcOnCode = nil
+thcOffCode = nil
+
+--Axis swapping. 
+--this translates the X axis in SheetCam to the machine's equivalent
+xAxis = "B"
+
+--this translates the Y axis in SheetCam to the machine's equivalent
+yAxis = "Y"
+
+--Define the rotary axis. Set to xAxis if SheetCam's X axis is rotary otherwise use yAxis
+rotaryAxis = xAxis
+
+--The number of units for one full rotation of the rotary axis
+--NOTE: the rotary axis should be defined as a LINEAR axis in Mach, not rotary
+oneRev = 1
+
+
+--Any initialization code, for instance to move an axis to be in line with the tube
+--If you don't need any initialization code, simply comment this line out
+initCode = " G0 X0"
+
+--Any ending code, for instance to move an axis out of the way to load/unload the tube
+--If you don't need any code, simply comment this line out
+endCode = " G0 X-2.8"
+
+
+--************************************************
+--***           End of settings                ***
+--************************************************
+
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("plasma MP1000-THC post processor for cutting tubes\n")
+   ctrl:AppendText("Post variables:\n")
+   ctrl:AppendText("refDistance - set the distance between each reference\n")
+   ctrl:AppendText("refFeed - set the feed rate when referencing\n")
+   ctrl:AppendText("switchOffset - set your net switch offset amount \n")
+   ctrl:AppendText("slowRadius - slow down below this radius\n")
+   ctrl:AppendText("slowPercent - minimum percentage to slow down\n")
+end
+
+
+
+--   created 1/1/06
+--   Based on plasma1.post
+
+
+--  Modified 21/6/2010
+--  added option for 'nil' plate marker z
+--  Added support for plate marker tool type as well as tool number based plate marker
+
+-- Modified 4/11/2010
+-- Added: Reference the torch on the first pen down if the plate marker is the first tool used.
+
+
+post.DefineVariable("refDistance",sc.unitLINEAR,0,1e17)
+post.DefineVariable("refFeed",sc.unitFEED,0,1e17)
+post.DefineVariable("switchOffset",sc.unitLINEAR,-1e17,1e17)
+post.DefineVariable("slowRadius",sc.unitLINEAR,-1e17,1e17)
+post.DefineVariable("slowPercent",sc.unitPERCENT,-1e17,1e17)
+post.DefineVariable("diameter",sc.unitLinear,0,1e17)
+
+function OnInit()
+
+   cscale = 0
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" F1\n G53 G90 G40\n")
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   firstRef = true
+
+   dist = 9999999
+   lastz = 0
+   thcstate = 1
+   
+   if(initCode) then
+      post.Text(initCode .. "\n")
+   end
+   
+   ThcOff()
+   xScale = scale
+   yScale = scale
+  
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   if(endCode) then
+      post.Text(endCode .. "\n")
+   end
+   post.Text (" M05 M30\n")
+end
+
+function OnRapid()
+   if(endX > 1e17 and endY > 1e17) then return end
+   local len = math.hypot(endX - currentX , endY - currentY)
+   dist = dist + len
+   post.ModalText (" G00")
+   post.ModalNumber (" " .. xAxis, endX * xScale, "0.0000")
+   post.ModalNumber (" " .. yAxis, endY * yScale, "0.0000")
+   post.ModalNumber (" Z", (endZ) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   local len = math.hypot(endX - currentX , endY - currentY)
+   dist = dist + len
+   if(len > slowRadius) then
+      ThcOn()
+   end
+   post.ModalText (" G01")
+   post.ModalNumber (" " .. xAxis, endX * xScale, "0.0000")
+   post.ModalNumber (" " .. yAxis, endY * yScale, "0.0000")
+   post.ModalNumber (" Z", (endZ) * scale, "0.0000")
+   
+   local dx = math.abs((endX - currentX))
+   local dy = math.abs((endY - currentY))
+   local len1 = math.hypot (dx * scale,dy * scale)
+   if(len1 > 0) then
+      local len2 = math.hypot (dx * xScale, dy * yScale)
+      local perc = len2 / len1      
+      post.ModalNumber (" F", feedRate * scale * perc, "0.0###")
+   else
+      post.ModalNumber (" F", feedRate * scale, "0.0###")
+   end
+   post.Eol()
+end
+
+function OnArc()
+   post.ArcAsMoves(0.1)
+end
+
+
+function ThcOff()
+   if(not thcOffCode) then return end
+   if(thcstate ==1) then
+      thcstate = 0
+      post.Text(thcOffCode)
+      post.Text(" (THC off)\n");
+   end
+end
+
+function ThcOn()
+   if(not thcOnCode) then return end
+   if(toolClass == "MarkerTool") or tool > 99 then return end
+   if(thcstate ==0) then
+      thcstate = 1
+      post.Text(thcOnCode)
+      post.Text(" (THC on)\n");
+      return
+   end
+   if(thcstate == 2) then
+      thcstate = 0
+   end
+end
+
+
+function OnPenDown()
+   if(dist >= refDistance) then
+      dist = 0
+      Reference();
+   end
+   post.ModalText (" G00")
+   post.Text(" Z")
+   post.Number (pierceHeight  * scale, "0.0000")
+   post.Eol()
+   if (preheat > 0) then
+      post.Text ("\n G04 P")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end
+   post.Text ("\n M03\n")
+   if (pierceDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function Reference()
+   firstRef = false
+   if (customRef) then
+      post.Text(customRef .. "\n")
+      return
+   end
+   if (refHome) then
+      post.ModalText(" G28.1 Z")
+      post.Number(3 * scale, "0.00")
+   else
+      post.ModalText(" G31 Z -100")
+   end
+   post.ModalNumber (" F", refFeed * scale, "0.0###")
+   post.Eol()
+   post.ModalText(" G92 Z0.0\n")
+   post.ModalText (" G00")
+   post.Text(" Z")
+   post.Number (switchOffset * scale, "0.0000")
+   post.Eol()
+   post.ModalText(" G92 Z0.0\n")
+end
+
+function OnPenUp()
+   if(tool > 99) then
+      post.Text(" M09\n")
+   else
+      post.Text (" M05\n")
+   end
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   if ((feedRate <= 0) and (operationClass ~= "VariableOperation")) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+   
+   if not diameter then
+      if (operationClass ~= "VariableOperation") then
+         post.Error("You need to define the tube diameter first")
+      end
+      return
+   end
+   
+   local scl = oneRev/(math.pi * diameter)
+   
+   if(cscale ~= scl) then
+      cscale = scl
+      post.Text(" (Diameter: ")
+      post.Number (diameter * scale, "0.0##")
+      post.Text(")\n")
+      
+      if(rotaryAxis == xAxis) then
+         xScale = cscale
+         yScale = scale
+      else
+         xScale = scale
+         yScale = cscale
+      end
+   end
+end
+
+function OnToolChange()
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

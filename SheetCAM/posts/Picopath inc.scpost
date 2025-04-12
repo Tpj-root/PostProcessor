@@ -1,0 +1,101 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Linotrol Picopath post\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Similar to Burny code\n")
+   ctrl:AppendText("Uses incremental code\n")
+   ctrl:AppendText("Tools 0-99 are plasma (M15/M16)\n")
+   ctrl:AppendText("Tools 100+ are oxy-fuel (M07/M08)\n")
+   ctrl:AppendText("Uses G70,G71,G91,G40\n")
+end
+
+
+--   Created 20/02/2009
+
+
+
+
+function OnInit()
+   post.Text("%\n")
+   if(scale == metric) then
+      post.Text ("G71\n") --metric mode
+   else
+      post.Text ("G70\n") --inch mode
+   end
+   post.Text ("G91\nG40\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   curx =0
+   cury =0
+   firstmove = 1
+end
+
+
+function OnFinish()
+   OnPenUp()
+   endX = 0
+   endY = 0
+   OnRapid()
+   post.Text ("M30\n")
+end
+
+function OnRapid()
+   if(firstmove == 1) then
+      firstmove=0
+      return
+   end
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText("G0");
+   doxy()
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText("G1");
+   doxy()
+   post.Eol()
+end
+
+function doxy()
+   tmp = (endX * scale) - curx
+   tmp = math.toint(tmp * 1000)/1000
+   curx = curx + tmp
+   post.NonModalNumber("X",tmp,"0.0##")
+
+   tmp = (endY * scale) - cury
+   tmp = math.toint(tmp * 1000)/1000
+   cury = cury + tmp
+   post.NonModalNumber("Y",tmp,"0.0##")
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text ("G03")
+   else
+      post.Text ("G02")
+   end
+   post.CancelModaltext()
+   doxy()
+   post.NonModalNumber ("I", (arcCentreX - currentX) * scale, "0.0##")
+   post.NonModalNumber ("J", (arcCentreY - currentY) * scale, "0.0##")
+   post.Eol()
+end
+
+function OnPenDown()
+   if(tool < 100) then
+      post.Text("M15\n")
+   else
+      post.Text("M07\n")
+   end
+end
+
+function OnPenUp()
+   if(tool < 100) then
+      post.Text("M16\n")
+   else
+      post.Text("M08\n")
+   end
+end
+
+

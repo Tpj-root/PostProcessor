@@ -1,0 +1,148 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Dynatorch post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Designed for use with machine having fully automatic thc\n")
+   ctrl:AppendText("Tool numbers 100 and higher are oxy-fuel, lower are plasma\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("G23/G25 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+
+
+
+function OnInit()
+   lineNumber = 10
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G90\n G17\n G54\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   oldfeed = -1
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" G25\n M30\n")
+end
+
+function OnRapid()
+---text(currentx," ",currenty," ",endx," ",endy)
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   if(endX > 1e30) then return end
+   CheckFeed()
+   post.Text (" G00")
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   CheckFeed()
+   post.Text (" G01")
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnArc()
+   CheckFeed()
+   if(arcAngle <0) then
+      post.Text (" G03")
+   else
+      post.Text (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.NonModalNumber (" I",(arcCentreX - currentX) * scale, "0.0000")
+   post.NonModalNumber (" J",(arcCentreY - currentY) * scale, "0.0000")
+   post.Eol()
+end
+
+
+function CheckFeed()
+   if(feedRate == oldfeed) then return end
+--   nonmodalnumber (" F", feedrate * scale, "0.###")
+   oldfeed = feedRate
+   post.Eol()
+end
+
+function OnPenDown()
+   if (preheat > 0) then
+      post.Text (" G04 P")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end
+   if(tool >= 100) then
+      post.Text (" M04\n")
+   else
+      post.Text (" G23\n")
+   end
+   if (pierceDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   if(tool >= 100) then
+      post.Text (" M05\n")
+   else
+      post.Text (" G25\n")
+   end
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+end
+
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

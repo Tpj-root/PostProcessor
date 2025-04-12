@@ -1,0 +1,230 @@
+
+post.DefineVariable("mpf",sc.unitPITCH,0,9999)
+post.DefineVariable("mirror",sc.unitPITCH,0,1)
+post.DefineVariable("release",sc.unitPITCH,0,1)
+post.DefineVariable("pattern",sc.unitPITCH,0,100)
+post.DefineVariable("ParkPos",sc.unitPITCH,0,2)
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Woodstep post processor\n")
+   ctrl:AppendText("For IMA-Machines\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("written by Herbert Wols\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Tooloffset = Spindlenumber!!!!\n")
+end
+
+post.DefineCustomOption("mpf number","mpf",sc.unit0DECPLACE,0,9999)
+post.DefineCustomOption("mirror","mirror",sc.unit0DECPLACE,0,1)
+
+mpf = 5000
+
+function OnFileOpen()
+    post.ShowCustomOptions("Options");    
+    fileName = "mpf"..mpf
+end
+
+function OnInit()
+   -- initialize Postprozessing Options
+   bigArcs = 1          --stitch arc segments together
+   minArcSize = 1.5      --arcs smaller than this are converted to moves
+   bmode=1              -- 1=drilling with Toolnumber  2= drilling with Drilldiameter
+   zdir=1               -- 1 for positive Z-Values (Morbidelli) -1 for negativ Z-Values (SCM)
+   xval=-1              -- Faktor zum invertieren der X-Werte Bei Anschlag rechts
+   yval=-1              -- Faktor zum invertieren der Y-Werte Bei Anschlag oben
+   -- Komments
+   post.SetCommentChars ("(", ")")  --make sure ( and ) characters do not appear in system text
+        --set Header posted?
+   header=0
+   if (counter==nil) then
+      counter=0
+   end
+                        --define Variables
+   LastCount=counter    --rescue counter from last Postrun
+   counter=3            --Base Counter (Head, Zero Point, Footer)
+   newRoute=1           --prevent NIL  at newRoute
+   
+   --Standardvalues Postvariables
+   mirror=1
+   release=0
+   pattern=35.5
+   ParkPos=1
+end
+
+function OnNewLine()
+  
+end
+
+
+function OnFinish()
+   if (counter==LastCount) then
+   else
+      post.Warning ("(Satzzahl geändert! weiteren Postdurchlauf ausführen!!!)")
+   end
+   post.NonModalNumber ("(END/4990) \nR50=", ParkPos, "0.")
+   post.Text (" L4901\n@050\nM02\n")
+end
+
+function OnRapid()
+if (header==0) then  --post Header before any other Step
+   header=1          --only post this block once
+   -- Begin Post Header
+   post.NonModalNumber ("%MPF",mpf,"0.")
+   post.Eol()
+   post.Text("(", fileName)
+   post.NonModalNumber ("/4990/",LastCount,"0.")
+   post.Text(")\n")
+   post.Eol()
+   post.NonModalNumber ("R100=", (materialX2-materialX1) * scale, "0.###")
+   post.NonModalNumber (" R101=", (materialY2-materialY1) * scale, "0.###")
+   post.NonModalNumber (" R102=", materialThick * scale, "0.###")
+   post.NonModalNumber (" R261=", mirror, "0.")
+   post.NonModalNumber (" R262=", release, "0.")
+   post.NonModalNumber (" R263=", pattern, "0.##")
+   post.Text (" R103=20.0 L4900\n")
+   post.Text (" @050\n")
+        -- zero point movement
+   post.NonModalNumber ("(Nullpunkt/4996)\n\nR265=", materialX2 * xval * scale, "0.###")
+   post.NonModalNumber (" R266=", materialY2 * yval * scale, "0.###")
+   post.Text (" R19=0 L5180")
+   post.Eol()
+   post.Text (" @050\n")
+end
+
+if (newRoute==0) then
+   counter=counter+1
+   post.Text ("(G END/4994)\nR50=1 L5130\n@050\n")
+end
+newRoute=1
+end
+
+function RouteStart()
+   if (newRoute==1) then
+      newRoute=0
+      counter=counter+1
+      post.Text ("(G0/4994)\n")
+      post.NonModalNumber (" R1=", toolOffset, "0.")
+      post.NonModalNumber (" R37=", tool, "0.")
+      post.Text (" R2=0 R38=0 R39=0 ")
+      post.NonModalNumber (" R10=", xval * (currentX - materialX2) * scale, "0.###")
+      post.NonModalNumber (" R11=", yval * (currentY - materialY2) * scale, "0.###")
+      post.NonModalNumber (" R34=", materialThick-(-zdir*(currentZ)) * scale, "0.###")
+      post.NonModalNumber (" R40=", rot, "0.")
+      post.NonModalNumber (" R36=", spindleSpeed, "0.")
+      post.NonModalNumber (" R30=", feedRate * scale, "0.")
+      post.Text (" L5131\n@050")
+      post.Eol()
+   end
+end
+
+function OnMove()
+   RouteStart()
+counter=counter+1
+   post.Text ("(G1/4994)\n")
+   post.NonModalNumber (" R10=", xval * (endX - materialX2) * scale, "0.###")
+   post.NonModalNumber (" R11=", yval * (endY - materialY2) * scale, "0.###")
+   post.NonModalNumber (" R34=", materialThick-(-zdir*(endZ)) * scale, "0.###")
+   post.NonModalNumber (" R31=", feedRate * scale, "0.")
+   post.Text(" R272=0 R51=0 L5132\n@050")
+   post.Eol()
+end
+
+function OnArc()
+   RouteStart()
+counter=counter+1
+   post.Text ("(G23/4994)\n")
+   post.NonModalNumber (" R10=", xval * (endX - materialX2) * scale, "0.###")
+   post.NonModalNumber (" R11=", yval * (endY - materialY2) * scale, "0.###")
+   post.NonModalNumber (" R34=", materialThick-(-zdir*(endZ)) * scale, "0.###")
+   post.Text (" R44=0")
+   post.NonModalNumber (" R12=",xval * (arcCentreX - materialX2) * scale, "0.###")
+   post.NonModalNumber (" R13=",yval * (arcCentreY - materialY2) * scale, "0.###")
+   
+   if(arcAngle < 0) then
+      post.Text (" R47=3")
+   else
+      post.Text (" R47=2")
+   end
+   post.NonModalNumber (" R31=", feedRate * scale, "0.")
+   post.Text(" R51=0 L5133\n@050")
+   post.Eol()
+end
+
+
+function OnSpindleCW()
+rot=3
+end
+
+function OnSpindleCCW()
+rot=4
+end
+
+function OnSpindleOff()
+
+end
+
+
+function OnNewOperation()
+      if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+
+end
+
+function OnToolChange()
+
+end
+
+function OnSpindleChanged()
+
+end
+
+function OnNewPart()
+   
+end
+
+
+function OnFloodOn()
+
+end
+
+function OnMistOn()
+
+end
+
+function OnCoolantOff()
+
+end
+
+function OnDrill()
+   counter=counter+1
+   if (bmode==1) then
+      post.Text ("(B/4991)\n")
+      post.NonModalNumber (" R10=", xval * (endX - materialX2) * scale, "0.###")
+      post.NonModalNumber (" R11=", yval * (endY - materialY2) * scale, "0.###")
+      post.NonModalNumber (" R25=", (-zdir*(drillZ)) * scale, "0.###")
+      post.NonModalNumber (" R1=", tool, "0.")
+      post.Text (" R2=0 R3=0 R4=0 R5=0 R6=0 R7=0 R8=0 L5115 \n @050 \n")
+   end
+   if (bmode==2) then
+      post.Text ("(/4991)\n")
+      post.NonModalNumber (" R10=", xval * (endX - materialX2) * scale, "0.###")
+      post.NonModalNumber (" R25=", (-zdir*(drillZ)) * scale, "0.000")
+      post.NonModalNumber (" R11=", yval * (endY - materialY2) * scale, "0.###")
+      post.NonModalNumber (" R44=", toolDia, "0.")
+      post.Text (" R13=0 R45=0 R15=0 R46=0 R17=0 R47=0 L5116 \n @050 \n")
+   end
+
+end
+
+function OnFileClosed()
+end

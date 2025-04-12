@@ -1,0 +1,178 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Fagor 8025M Mill or Router Post Processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental code\n")
+end
+
+post.ForceExtension("pim")
+
+
+post.DefineCustomOption("Program number","progNumber",sc.unit0DECPLACE,0,99999)
+
+function OnInit()
+   post.ShowCustomOptions()
+   line= 10
+   nolines = true
+   post.Text ("%")
+   post.Number(progNumber, "0")
+   post.Eol()
+   nolines = false
+   post.SetCommentChars ("()/", "[] ")  --makes sure (,) & / characters do not appear in system text
+   post.Text (" (Filename ", fileName, ")\n")
+   post.Text (" (Post processor ", postName, ")\n")
+   post.Text (" (Date ", date, ")\n")
+   post.Text (" G90\n")
+   if(scale == metric) then
+      post.Text (" G71 (Metric)\n") --metric mode
+   else
+      post.Text (" G70 (Inch)\n") --inch mode
+   end
+   post.Text(" G59 X0 Y0 Z0\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   if nolines then return end
+   post.Text("N")
+   post.Number(line,"0000")
+   line = line + 10
+end
+
+function OnFinish()
+   nolines = true
+   post.Text("N")
+   post.Number(line,"0000")
+   post.Text (" M30\n")
+end
+
+function OnRapid()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnSpindleCW()
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Text (" M03")
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Text (" M04")
+   post.Eol()
+end
+
+function OnSpindleOff()
+   post.Text (" M05\n")
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   post.Text (" (", toolName, ")\n")
+   post.Text (" G90\n")
+   post.Text (" T")
+   post.Number (tool, "0")
+   post.Text(".")
+   post.Number (tool, "0")
+   post.Text ("\n")
+   post.Text(" M6\n")
+   post.Text (" G43 T")
+   post.Number (tool, "0")
+   post.Text(".")
+   post.Number (tool, "0")
+   post.Eol()
+end
+
+function OnSpindleChanged()
+
+end
+
+function OnNewPart()
+   post.Text(" (Part ",partName,")\n");
+end
+
+
+function OnFloodOn()
+   post.Text(" M08 (Flood coolant on)\n")
+end
+
+function OnMistOn()
+   post.Text(" M07 (Mist coolant on)\n")
+end
+
+function OnCoolantOff()
+   post.Text(" M09 (Coolant off)\n")
+end
+
+
+function OnDrillStart()
+   firstDrill = true
+end
+
+function OnDrill()
+   if firstDrill then
+      post.Text(" G83 G98 G1")
+      firstDrill = false
+   else
+      post.Text(" G0")
+   end
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (drillStart + plungeSafety) * scale, "0.0000")
+   local depth = (drillStart - drillZ)
+   if(drillPeck <=0) then return end
+   local passes = math.toint((depth / drillPeck))
+   if(passes ~= (depth / drillPeck)) then 
+      passes = passes + 1
+   end
+   
+   post.ModalNumber (" I", ((depth + plungeSafety) / passes) * scale, "0.0000")
+   post.ModalNumber (" J", passes, "0.0000")
+   post.Eol()
+end
+
+function OnDrillEnd()
+   post.Text(" G80\n")
+   post.CancelModaltext();
+end

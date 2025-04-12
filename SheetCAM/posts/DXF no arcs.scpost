@@ -1,0 +1,107 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("DXF post processor\n")
+   ctrl:AppendText("\n")
+end
+
+
+
+--   Created 19/10/2005
+
+post.ForceExtension("dxf")
+
+
+function OnInit()
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+
+   post.Text("  0\nSECTION\n")
+   post.Text("  2\nENTITIES\n")
+
+   angscale = 180/math.pi --convert rads to degrees
+   numFmt = "0.############"
+end
+
+function OnNewLine()
+end
+
+
+function OnFinish()
+   post.Text("  0\nENDSEC\n")
+   post.Text("  0\nEOF\n")
+end
+
+function OnRapid()
+end
+
+function OnMove()
+   if(math.hypot(currentX - endX, currentY - endY) < 0.0000001) then return end
+   post.Text("  0\nLINE")
+   post.Text("\n  8\nLayer")
+   post.Number(tool,"0");
+   post.Text("\n  10\n")
+   post.Number(currentX * scale, numFmt)
+   post.Text("\n  20\n")
+   post.Number(currentY * scale, numFmt)
+   post.Text("\n  11\n")
+   post.Number(endX * scale, numFmt)
+   post.Text("\n  21\n")
+   post.Number(endY * scale, numFmt)
+   post.Eol()
+end
+
+function OnArc()
+post.ArcAsMoves(0.002)
+end
+
+
+function OnSpindleCW()
+end
+
+function OnSpindleCCW()
+end
+
+function OnSpindleOff()
+end
+
+
+function OnNewOperation()
+end
+
+function OnToolChange()
+end
+
+function OnSpindleChanged()
+end
+
+function OnNewPart()
+end
+
+
+function OnFloodOn()
+end
+
+function OnMistOn()
+end
+
+function OnCoolantOff()
+end
+
+function OnDrill()
+   post.Text("  0\nLINE")
+   post.Text("\n  8\nLayer")
+   post.Number(tool,"0");
+   post.Text("\n  10\n")
+   post.Number(endX * scale, numFmt)
+   post.Text("\n  20\n")
+   post.Number(endY * scale, numFmt)
+   post.Text("\n  30\n")
+   post.Number(drillStart * scale, numFmt)
+   post.Text("\n  11\n")
+   post.Number(endX * scale, numFmt)
+   post.Text("\n  21\n")
+   post.Number(endY * scale, numFmt)
+   post.Text("\n  31\n")
+   post.Number(drillZ * scale, numFmt)
+   post.Eol()
+end

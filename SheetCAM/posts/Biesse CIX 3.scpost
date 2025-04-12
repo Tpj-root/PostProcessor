@@ -1,0 +1,198 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Biesse CIX post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Uses Biesse CIX format")
+
+end
+
+post.ForceExtension("cix")
+post.SetOptions(post.ARC_SEGMENTS)
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   
+   post.Text("BEGIN ID CID3\n")
+   post.Text("\tREL=5.0\n")
+   post.TextDirect("END ID\n\n")
+   post.Text("BEGIN MAINDATA\n")
+   post.Text("\tLPX=")
+   post.Number((materialX2 - materialX1) * scale,"0.0000")
+   post.Text("\n\tLPY=")
+   post.Number((materialY2 - materialY1) * scale,"0.0000")
+   post.Text("\n\tLPZ=")
+   post.Number(materialThick * scale,"0.0000")
+   post.Text("\n\tFCN=")
+   post.Number(1/scale, "0.0000")   
+   post.Text("\nEND MAINDATA\n")
+   post.TextDirect("\n")
+   
+--[[   
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end]]
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   pNum = 100
+end
+
+
+function OnFinish()
+end
+
+
+function OnRapid()
+end
+
+function Param(name, val)
+   post.Text("\tPARAM,NAME=", name, ",VALUE=")
+   if(type(val) == "number") then
+      post.Number(val,"0.####")
+   else
+      post.Text(val)
+   end
+   post.Eol()
+end
+
+function ParamT(name, val)
+   post.Text("\tPARAM,NAME=", name, ",VALUE=\"", val, "\"\n")
+end
+
+function DoId()
+   ParamT("ID", "P" .. pNum)
+   pNum = pNum + 1
+end
+
+function BeginMacro(name)
+   post.TextDirect("\nBEGIN MACRO\n")
+   post.Text("\tNAME=", name, "\n")
+   DoId()
+end
+
+function OnPenDown()
+   BeginMacro("ROUT")
+   ParamT("CRN", "2")
+   Param("DIA", toolDia * scale)
+   Param("AZ", 90)
+   Param("THR", "NO")
+   ParamT("TNM", toolName)
+   Param("TTP", 100)
+   Param("CRC", 0)
+   Param("TCL", 1)
+--   Param("DP", cutDepth * scale)
+   Param("DP", 0)
+   Param("RSP", spindleSpeed)
+   Param("WSP", feedRate * scale)
+   Param("DSP", plungeRate * scale)
+   Param("TIN", 0)
+   Param("AIN", 45)
+   Param("TOU", 0)
+   Param("AOU", 0)
+   Param("PRP", 0)
+   Param("DIN", 0)
+   Param("DOU", 0)
+   Param("OPT", 0)
+   post.Text("END MACRO\n")
+   BeginMacro("START_POINT")
+   Param("X", endX * scale)
+   Param("Y", endY * scale)
+   post.Text("END MACRO\n")
+end
+
+function OnMove()
+   BeginMacro("LINE_EP")
+   Param("XE", endX * scale)
+   Param("YE", endY * scale)
+   Param("ZS", -currentZ * scale)
+   Param("ZE", -endZ * scale)
+   post.Text("END MACRO\n")
+end
+
+function OnArc()
+   BeginMacro("ARC_EPCE")
+   Param("XE", endX * scale)
+   Param("YE", endY * scale)
+   Param("XC", arcCentreX * scale)
+   Param("YC", arcCentreY * scale)
+   if(arcAngle > 0) then
+      Param("DIR", "dirCW")
+   else
+      Param("DIR", "dirCCW")
+   end
+   Param("ZS", -currentZ * scale)
+   Param("ZE", -endZ * scale)
+   Param("SC", "scOFF")
+   Param("FD", 0)
+   Param("SP", 0)
+   Param("SOL", 0)
+   post.Text("END MACRO\n")
+end
+
+
+function OnNewOperation()
+--   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+--  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+--[[   post.Text (" (", toolName, ")\n")
+   post.Text (" T")
+   post.Number (tool, "0")
+   post.Text (" M06\n  G43 H")
+   post.Number (tool, "0")
+   post.Eol()]]
+end
+
+function OnSpindleChanged()
+--[[   post.ModalNumber (" S", spindleSpeed, "0.##")
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end]]
+end
+
+function OnNewPart()
+--   post.Text(" (Part: ",partName,")\n");
+end
+
+
+function OnFloodOn()
+--   post.Text(" M08 (Flood coolant on)\n")
+end
+
+function OnMistOn()
+--   post.Text(" M07 (Mist coolant on)\n")
+end
+
+function OnCoolantOff()
+--   post.Text(" M09 (Coolant off)\n")
+end
+
+function OnDrill()
+   BeginMacro("BG")
+   Param("X", endX * scale)
+   Param("Y", endY * scale)
+   Param("Z", -drillStart * scale)
+   Param("THR", "NO")
+   Param("DIA", toolDia * scale)
+   Param("DP", (drillStart - drillZ) * scale)
+   Param("RSP", spindleSpeed)
+   Param("WSP", feedRate * scale)
+   local pecks = math.floor((drillStart - drillZ)/drillPeck) + 1
+   Param("VTR", pecks)
+   Param("SIDE", 0)
+   Param("DX", 0)
+   Param("DY", 0)
+   Param("R", 0)
+   Param("TCL", 0)
+   ParamT("TNM", toolName)
+   Param("OPT", 1)
+   post.Text("END MACRO\n")
+end
+
+function OnSetFeed()
+end

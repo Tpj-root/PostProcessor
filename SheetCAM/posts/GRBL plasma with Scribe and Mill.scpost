@@ -1,0 +1,301 @@
+--************************************************
+--*** Set these values up to suit your machine ***
+--************************************************
+
+--Plasma on and off codes
+PlasmaOn = "M42 P22 S255" --Plasma on
+PlasmaOff = "M42 P22 S0" --Plasma off
+
+--Scriber X,Y,Z offsets in MILLIMETRES. Do not use inches here even if you want inch code
+--Use the special code 'nil' on the Z axis to disable it.
+--In that case no Z values will be output at all while Scribing.
+--e.g ScriberZ = nil
+ScriberX = 110
+ScriberY = 220
+ScriberZ = 0
+
+--scriber axis. Leave this as nil if the Scriber is fixed to the same axis as the torch
+--scriberAxis = "A"
+ScriberAxis = nill
+
+--Scriber on and off codes
+scriberOn = "M42 P2 S1" --Scriber on
+scriberOff = "M42 P2 S0" --Scriber off
+
+--Router X,Y,Z offsets in MILLIMETRES. Do not use inches here even if you want inch code
+--Use the special code 'nil' on the Z axis to disable it.
+--In that case no Z values will be output at all while Milling.
+--e.g RouterZ = nil
+RouterX = -110
+RouterY = -220
+RouterZ = 50
+
+--Router axis. Leave this as nil if the Router is fixed to the same axis as the torch
+--RouterAxis = "nil"
+RouterAxis = nil
+
+--Router on and off codes
+RouterOn = "M42 P21 S255" --Router on
+RouterOff = "M42 P21 S0" --Router off
+
+--this is an extra delay added to the first pierce as needed by some machines
+firstPierceTime = 0
+
+--************************************************
+--***           End of settings                ***
+--************************************************
+
+post.ForceExtension("nc")
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("GRBL plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Generic plasma post for machines with or without THC\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("No comments\n")
+   ctrl:AppendText("M42 P22 S255/M42 P22 S0 turn the torch on/off\n")
+   ctrl:AppendText("M42 P2 S1/M42 P2 S0 turn the plate marker on/off\n")
+   ctrl:AppendText("M42 P21 S255/M42 P21 S0 turn spindle on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   if(scale == metric) then
+      post.Text ("G21\n") --metric mode
+      format = "0.0##"
+   else
+      post.Text ("G20\n") --inch mode
+      format = "0.0###"
+   end
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   firstPierce = firstPierceTime
+   oldFeed = -1
+end
+
+function OnFinish()
+   post.Text ("M42 P22 S0 M30\n")
+   post.Text ("M42 P21 S0 M30\n")
+   post.Text ("M42 P2 S0 M30\n")
+end
+
+function OnRapid()
+   post.Text ("G0")
+   post.ModalNumber ("X", endX * scale, format)
+   post.ModalNumber ("Y", endY * scale, format)
+   post.ModalNumber ("Z", endZ * scale, format)
+   post.Eol()
+end
+
+function OnMove()
+   if oldFeed ~= feedRate then
+      oldFeed = feedRate
+      post.ModalNumber ("F", feedRate * scale, "0.0###")
+      post.Eol()
+   end
+   post.Text ("G1")
+   post.NonModalNumber ("X", endX * scale, format)
+   post.NonModalNumber ("Y", endY * scale, format)
+   post.ModalNumber ("Z", endZ * scale, format)
+   post.Eol()
+end
+
+function OnArc()
+   if oldFeed ~= feedRate then
+      oldFeed = feedRate
+      post.ModalNumber ("F", feedRate * scale, "0.0###")
+      post.Eol()
+   end
+   if(arcAngle <0) then
+      post.Text ("G3")
+   else
+      post.Text ("G2")
+   end
+   post.NonModalNumber ("X", endX * scale, format)
+   post.NonModalNumber ("Y", endY * scale, format)
+   post.ModalNumber ("Z", endZ * scale, format)
+   post.Text ("I")
+   post.Number ((arcCentreX - currentX) * scale, format)
+   post.Text ("J")
+   post.Number ((arcCentreY - currentY) * scale, format)
+   post.ModalNumber ("F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown ()
+   if toolClass == "PlasmaTool" or (tool < 99 ) then
+         return
+   end
+         if (preheat > 0.001) then
+         post.Text ("G0")
+         post.NonModalNumber ("Z", cutHeight * scale, format)
+         post.Text ("\n G4 P")
+         post.Number (preheat,"0.###")
+         post.Eol()
+      end
+      post.Text ("\nG0")
+      post.Text ("\nM400")
+      post.Text ("\nG91")
+      post.Text ("\nM563 P999 S\"XYZ-Probe\"\n")
+      post.Text ("\nT999\n")
+      post.Text ("\nM585 Z10 E4 L0 F500")
+      post.Text ("S1")
+      post.Text ("\nT-1")
+      post.Text ("\nG10 L20 Z-4.7")
+      post.NonModalNumber ("\nG1 Z", pierceHeight * scale, format)
+      post.NonModalNumber ("F", feedRate * scale, "0.0###")
+      post.Text ("\nM500")
+      post.Text ("\nG90")
+      post.Text ("\nM563 P999 D-1 H-1")
+      post.Text ("\nM42 P22 S255\n")
+      if (pierceDelay + firstPierce > 0.001) then
+         post.Text ("G4 S")
+         post.Number (pierceDelay + firstPierce,"0.###")
+         firstPierce = 0
+         post.Eol()
+      end
+   end
+
+
+   function OnPenUp()
+      post.Text ("M42 P22 S0\n")
+      if (endDelay > 0) then
+         post.Text ("G4 S")
+         post.Number (endDelay,"0.###")
+         post.Text ("\nG91")
+         post.Text ("\nG1 H1 Z105 F2500")
+         post.Text ("\nG92 Z105")
+         post.Text ("\nG90")
+         post.Eol()
+      end
+   end
+
+
+
+
+
+
+
+function OnPenDown ()
+   if toolClass == "MarkerTool" or (tool > 99 and tool < 150) then
+      return
+   end
+      if (preheat > 0.001) then
+         post.Text ("G0")
+         post.NonModalNumber ("Z", cutHeight * scale, format)
+         post.Text ("\n G4 P")
+         post.Number (preheat,"0.###")
+         post.Eol()
+      end
+      post.Text ("\nG0")
+      post.Text ("\nM400")
+      post.Text ("\nG91")
+      post.Text ("\nM563 P999 S\"XYZ-Probe\"\n")
+      post.Text ("\nT999\n")
+      post.Text ("\nM585 Z10 E4 L0 F500")
+      post.Text ("S1")
+      post.Text ("\nT-1")
+      post.Text ("\nG10 L20 Z-4.7")
+      post.NonModalNumber ("\nG1 Z", pierceHeight * scale, format)
+      post.NonModalNumber ("F", feedRate * scale, "0.0###")
+      post.Text ("\nM500")
+      post.Text ("\nG90")
+      post.Text ("\nM563 P999 D-1 H-1")
+      post.Text ("\nM42 P2 S1\n")
+      if (pierceDelay + firstPierce > 0.001) then
+         post.Text ("G4 S")
+         post.Number (pierceDelay + firstPierce,"0.###")
+         firstPierce = 0
+         post.Eol()
+      end
+   end
+
+   
+   function OnPenUp()
+      post.Text ("M42 P2 S0\n")
+      if (endDelay > 0) then
+         post.Text ("G4 S")
+         post.Number (endDelay,"0.###")
+         post.Text ("\nG91")
+         post.Text ("\nG1 H1 Z105 F2500")
+         post.Text ("\nG92 Z105")
+         post.Text ("\nG90")
+         post.Eol()
+      end
+   end
+
+
+
+
+function OnPenDown ()
+   if toolClass == "MillTool" or (tool > 150 and tool < 200) then
+      return
+   end
+      post.Text ("\nG0")
+      post.Text ("\nM400")
+      post.Text ("\nG91")
+      post.Text ("\nM563 P999 S\"XYZ-Probe\"\n")
+      post.Text ("\nT999\n")
+      post.Text ("\nM585 Z10 E4 L0 F500")
+      post.Text ("S1")
+      post.Text ("\nT-1")
+      post.Text ("\nG10 L20 Z-4.7")
+      post.NonModalNumber ("F", feedRate * scale, "0.0###")
+      post.Text ("\nM500")
+      post.Text ("\nG90")
+      post.Text ("\nM563 P999 D-1 H-1")
+   end
+
+   function OnSpindleCW()
+      post.Text ("M42 P21 S255")
+      post.Eol()
+   end
+
+
+   function OnSpindleOff()
+      post.Text ("M42 P21 S0\n")
+   end
+
+
+   function OnToolChange()
+      post.Text (";", toolName, "\n")
+      post.Text ("T")
+      post.Number (tool, "0")
+      post.Text ("M06\n")
+   --   post.Text("G43 H")
+   --   post.Number (tool, "0")
+   --   post.Eol()
+   end
+   
+   function OnPenUp()
+      post.Text ("M42 P21 S0\n")
+      if (endDelay > 0) then
+         post.Text ("G4 S")
+         post.Number (endDelay,"0.###")
+         post.Text ("\nG91")
+         post.Text ("\nG1 H1 Z105 F2500")
+         post.Text ("\nG92 Z105")
+         post.Text ("\nG90")
+         post.Eol()
+      end
+   end
+
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end
+

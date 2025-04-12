@@ -1,0 +1,98 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Microstep laser and plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("No comments\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+
+
+--  revision 3/2/07 
+--  Removed final safety move. This is now done in SheetCam
+
+--   Created 19/10/2004
+--   based on Mach2.post 
+
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   if(scale == metric) then
+      post.Text ("G21\n") --metric mode
+   else
+      post.Text ("G20\n") --inch mode
+   end
+   post.Text ("G92 X0 Y0\nG90\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+--   post.Text ("N")
+--   post.Number (lineNumber, "0000")
+--   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text ("M02\n")
+end
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   if(endX >= 1e17 and endY >= 1e17) then return end
+   post.Text ("G0")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.Text ("G1")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+--   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text ("G3")
+   else
+      post.Text ("G2")
+   end
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+--   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+
+function OnPenDown()
+    post.Text("M7\n")
+end
+
+function OnPenUp()
+    post.Text("M8\n")
+end
+
+
+function OnNewOperation()
+end
+
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   OnPenUp()
+end

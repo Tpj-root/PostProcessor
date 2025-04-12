@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<resource xmlns="http://www.wxwidgets.org/wxxrc">
+	<object class="wxPanel" name="shape">
+		<object class="wxBoxSizer">
+			<object class="sizeritem">
+				<object class="wxScrolledWindow" name="ID_SCROLLEDWINDOW">
+					<object class="wxBoxSizer">
+						<orient>wxVERTICAL</orient>
+						<object class="sizeritem">
+							<object class="wxStaticText" name="ID_SHAPELABEL">
+								<label></label>
+								<font>
+									<size>12</size>
+									<style>normal</style>
+									<weight>bold</weight>
+									<underlined>0</underlined>
+									<family>swiss</family>
+									<face>Arial</face>
+								</font>
+								<style>wxALIGN_CENTRE</style>
+							</object>
+							<flag>wxEXPAND</flag>
+							<border>0d</border>
+						</object>
+						<object class="sizeritem">
+							<object class="wxFlexGridSizer">
+								<cols>2</cols>
+								<object class="sizeritem">
+									<object class="wxButton" name="ID_BTNNEWSHAPE">
+										<label>New shape</label>
+									</object>
+									<flag>wxEXPAND</flag>
+									<border>0d</border>
+								</object>
+								<object class="sizeritem">
+									<object class="wxButton" name="ID_ADDBUTTON">
+										<label>Add to current part</label>
+									</object>
+									<flag>wxEXPAND</flag>
+									<border>2d</border>
+								</object>
+								<object class="sizeritem">
+									<object class="wxButton" name="ID_BTNDELETE">
+										<label>Delete</label>
+									</object>
+									<flag>wxEXPAND</flag>
+									<border>2d</border>
+								</object>
+								<object class="sizeritem">
+									<object class="wxButton" name="ID_ADDBUTTON2">
+										<label>Add to new part</label>
+									</object>
+									<flag>wxEXPAND</flag>
+									<border>2d</border>
+								</object>
+							</object>
+							<flag>wxALL|wxALIGN_LEFT</flag>
+							<border>2d</border>
+						</object>
+						<object class="sizeritem">
+							<object class="wxPanel" name="ID_STATUSPANEL">
+								<object class="wxBoxSizer">
+									<orient>wxVERTICAL</orient>
+								</object>
+							</object>
+							<flag>wxALL|wxEXPAND</flag>
+							<border>2d</border>
+						</object>
+						<object class="sizeritem">
+							<object class="wxStaticBitmap" name="ID_VALUEHINT" subclass="ValueBitmap">
+								<size>128,128</size>
+							</object>
+							<flag>wxALIGN_CENTER_HORIZONTAL</flag>
+							<border>0d</border>
+						</object>
+						<object class="sizeritem">
+							<object class="wxBoxSizer">
+								<orient>wxVERTICAL</orient>
+								<object class="sizeritem">
+									<object class="wxButton" name="ID_CREATEBITMAP">
+										<label>Create bitmap</label>
+									</object>
+									<flag>wxEXPAND</flag>
+									<border>0d</border>
+								</object>
+							</object>
+							<flag>wxALL|wxALIGN_CENTER_HORIZONTAL</flag>
+							<border>2d</border>
+						</object>
+					</object>
+				</object>
+				<flag>wxEXPAND</flag>
+				<border>0d</border>
+				<option>1</option>
+			</object>
+		</object>
+	</object>
+</resource>

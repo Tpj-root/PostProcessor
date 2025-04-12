@@ -1,0 +1,92 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Anilam post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Uses LINE and RAPID\n")
+   ctrl:AppendText("instead of G-code\n")
+end
+
+
+-- Created 19/8/09
+
+post.ForceExtension ("m")
+
+function OnInit()
+   post.SetCommentChars ("();", "[]:")  --make sure ( and ) characters do not appear in system text
+   post.Text("DIM ABS\n")
+   if(scale == metric) then
+      post.Text ("UNIT metric\n") --metric mode
+   else
+      post.Text ("UNIT inch\n") --inch mode
+   end
+   post.Text ("PLANE XY\n")  --absolute
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+
+function OnFinish()
+   post.Text ("ENDMAIN\n")
+end
+
+function OnRapid()
+   post.Text ("RAPID")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.Text ("LINE")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.ModalNumber (" FEED ", feedRate * scale, "0.######")
+   post.Eol()
+end
+
+function OnArc()
+    post.ArcAsMoves(0.1)
+end
+
+
+function OnToolChange()
+   post.Text ("TOOL#")
+   post.Number (tool, "0")
+   post.Eol()
+end
+
+
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end

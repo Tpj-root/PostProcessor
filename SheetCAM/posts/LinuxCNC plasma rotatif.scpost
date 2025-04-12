@@ -1,0 +1,201 @@
+--************************************************
+--*** Set these values up to suit your machine ***
+
+--scriber axis.
+--scriberAxis = "B"
+scriberAxis = "Z"
+
+--If this value is set to true then use G28 (home) for the Z reference
+--Set it to false for G31 probe
+refHome = true
+
+--rotary axis. Normally this would be "A"
+rotaryAxis = "A"
+
+--Number of units for one full revolution of the rotary axis
+--Note: In Mach3 the axis should be defined as linear, not rotary!
+unitsPerRev=360
+
+
+-- Rapids will move the shortest distance to the next cut but may cause machines with limited rotation
+-- to 'wind up'. Set this to 0 to disable optimisation.
+--defaults to 1 if not defined
+optimiseRapids = 1
+
+
+--************************************************
+--***           End of settings                ***
+--************************************************
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Post for rotary-plasma plugin LinuxCNC plasma\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   revision 7/10/04
+--   Added new arc handling
+
+--   Created 30/3/2005
+--   based on Mach2.post
+
+
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G40 G90\n F1 S1\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M05 M30\n")
+end
+
+function OnRapid()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.ModalNumber (" " .. rotaryAxis, endA, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.ModalNumber (" " .. rotaryAxis, endA, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   local radius = math.hypot(currentX - arcCentreX, currentY - arcCentreY)
+   dist = dist + radius * math.abs(arcAngle)
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   if(offZ) then
+      post.ModalNumber (" " .. currentZAxis, (endZ + offZ) * scale, "0.0000")
+   end
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" " .. rotaryAxis, endA, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   local matZ = sc.QueryDll(qryCHKEND, endY, dllId)
+   post.NonModalNumber(" o<touchoff> call [" ,(pierceHeight + matZ) * scale ,"0.000" )
+      post.Text ("] ")
+   post.NonModalNumber("[", pierceDelay * scale, "0.##")
+   post.Text ("] ")
+   post.NonModalNumber("[", cutHeight * scale, "0.##")
+   post.Text ("] (Touchoff and start cutting)\n")
+   post.NonModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+
+function OnPenUp()
+   post.Text (" M05\n")
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end
+
+
+function OnFinish()
+   post.Text ("G92.1 (Cancel offsets and set to zero)\n")
+   post.Text ("G0 Z0\n")
+   post.Text ("M2\n")
+   post.Text ("%\n")
+end
+
+
+--Set this to the number of units for one full revolution of the A axis. For example 360 = 360 degrees.
+unitsPerRev=360
+package.path = sc.Globals:Get().thisDir .. "/plugins/RotaryPlasma/?.lua"
+require("rotaryhelper")
+
+--change this to 1 if your machine is a robot
+--defaults to 0
+isRobot = 0
+
+--maximum error when converting arcs to multiple line segments.
+--Smaller numbers give better resolution but larger code size.
+--defaults to 0.1
+arcResolution = 0.1
+
+-- Rapids will move the shortest distance to the next cut but may cause machines with limited rotation
+-- to 'wind up'. Set this to 0 to disable optimisation.
+--defaults to 1
+optimiseRapids = 0 
+
+
+--Set this to false if your code does not do a reference cycle
+ignorePierceHeightMove = true
+
+
+function OnArc()
+   post.ArcAsMoves(0.1)
+end   

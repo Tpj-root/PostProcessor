@@ -1,0 +1,107 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Motoman plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Plasma post for Motoman robot\n")
+   ctrl:AppendText("\n")
+end
+
+
+--   created 29/10/08
+--   Based on Mach2 plasma.post
+
+
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   
+   rapidfeed = 100
+   wasRapid = false
+end
+
+function OnNewLine()
+
+end
+
+
+function OnFinish()
+   post.Text("END\n")
+end
+
+function OnRapid()
+   if(endX >= 1e17 or endY >= 1e17) then return end
+   if(math.hypot(endX - currentX, endY - currentY) < 0.0001) then return end 
+   if not wasRapid then
+   post.NonModalNumber("SPEED V=",rapidfeed,"0.0")
+        post.Eol()
+        wasRapid = true
+   end
+   post.Number (endX, "0.000")
+   post.NonModalNumber (",", endY, "0.000")
+   post.NonModalNumber (",", 0, "0.000")
+   post.Eol()
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.0001) then return end 
+   if wasRapid then
+   post.NonModalNumber("SPEED V=",feedRate / 60,"0.0")
+        post.Eol()
+        wasRapid = false
+   end
+   post.Number (endX, "0.000")
+   post.NonModalNumber (",", endY, "0.000")
+   post.NonModalNumber (",", 0, "0.000")
+   post.Eol()
+end
+
+function OnArc()
+   post.ArcAsMoves(0.1)
+end
+
+
+function OnPenDown()
+   if (preheat > 0.001) then
+      post.NonModalNumber("TIMER T=",preheat,"0.00")
+      post.Eol()
+   end
+   post.Text ("DOUT OT#(17) ON\n")
+   if (pierceDelay > 0.001) then
+      post.NonModalNumber("TIMER T=",pierceDelay,"0.00")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   post.Text ("DOUT OT#(17) OFF\n")
+   if (endDelay > 0) then
+      post.NonModalNumber("TIMER T=",endDelay,"0.00")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+
+end
+
+function OnComment()
+end
+
+function OnToolChange()
+end
+
+function OnNewPart()
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

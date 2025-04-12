@@ -1,0 +1,163 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Loyalmak plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Generic plasma post for machines without THC\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+voltage = 150
+current = 130
+
+post.DefineCustomToolParam("PlasmaTool", "Voltage", "voltage", sc.unit0DECPLACE, 130, 50,250)
+post.DefineCustomToolParam("PlasmaTool", "Current", "current", sc.unit0DECPLACE, 130, 10,250)
+post.ForceExtension("PGM")
+
+function OnInit()
+   nNo = 0
+   textCache = ""
+end
+
+function DoG600()
+   post.Text("G602")
+   post.NonModalNumber(" C", materialThick * scale * 1000, "0.##")
+   post.NonModalNumber(" D", 30000, "0.##")
+   post.NonModalNumber(" F", pierceHeight * scale, "0.##")
+   post.NonModalNumber(" G", pierceDelay * 1000, "0.##")
+   post.NonModalNumber(" H", feedRate * scale, "0.##")
+   post.NonModalNumber(" I", 0, "0.##")
+   post.NonModalNumber(" J", cutHeight * scale, "0.##")
+   post.NonModalNumber(" K", pierceHeight * scale, "0.##")
+   post.NonModalNumber(" L", voltage * 10, "0.##")
+   post.NonModalNumber(" N", current, "0.##")
+   post.NonModalNumber(" O", 0, "0.##")
+   post.NonModalNumber(" P", toolDia * scale, "0.##")
+   post.NonModalNumber(" U", 0, "0.##")
+   post.Text("\n")
+end
+
+function DoInit()
+   post.Text ("%1234\n")
+   post.Text("SHP(", materialY1, ",", materialX1, ",0,", materialY2, ",", materialX2,",",0,")\n")
+   DoG600();
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (";Filename: ", fileName, "\n")
+   post.Text (";Post processor: ", postName, "\n")
+   post.Text (";Date: ", date, "\n")
+   post.TextDirect("\n")
+   post.Text("VA10=(%DbTecno.VelTag)\n")
+   post.Text("FVA10\n")
+   post.Text("G64\n")
+   post.Text("IF( %R18 == 0 ) THEN\n")
+   post.Text("    IF((!%cn[WHO()].rc[0].21) && (!%C33.17)) %R18=1\n")
+   post.Text("    SYN\n")
+   post.Text("ENDIF\n")
+   post.Text ("N0 IF((!%cn[WHO()].rc[0].21) && (!%C33.17)) JMPF (%R18)\n")
+   post.Text ("M49\n")
+   post.Text ("SYN\n")
+   post.Text("G90\n")
+   nNo = 1
+end
+
+
+function OnFinish()
+   post.Text ("M18\n")
+   post.Text ("SYN\n")
+   post.Text ("IF(!%cn[WHO()].rc[0].21) %R18=0\n")
+   post.Text ("M30\nEND\n")
+end
+
+function OnRapid()
+end
+
+function OnMove()
+   if(math.hypot(currentX - endX, currentY - endY) < 0.001) then return end
+   post.Text ("G01")
+   post.ModalNumber (" Y", endX * scale, "0.0000")
+   post.ModalNumber (" X", endY * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   post.ArcAsMoves(0.1)
+end
+
+
+function OnPenDown()
+   if(textCache ~= "") then
+      post.Text(textCache)
+      post.TextDirect("\n")
+      textCache = ""
+   end
+   post.Text ("IF((!%cn[WHO()].rc[0].21) && (!%C33.17)) %R18=%R18+1\n")
+   post.TextDirect("\n\n")
+   post.Text ("N", nNo, " ;[TR", nNo, "]\n")
+   nNo = nNo + 1
+   post.Text ("G154\n")
+--   post.Text ("D1\n")
+   post.Text ("G00")
+   post.ModalNumber (" Y", endX * scale, "0.0000")
+   post.ModalNumber (" X", endY * scale, "0.0000")
+   post.Eol()
+
+
+
+--[[   if (preheat > 0.001) then
+      post.Text ("G04 P")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end]]
+   post.Text ("M17\n")
+--[[   if (pierceDelay > 0.001) then
+      post.Text ("G04 P")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end]]
+end
+
+
+function OnPenUp()
+   post.Text ("M20\n")
+--[[   if (endDelay > 0) then
+      post.Text ("G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end]]
+   post.Text ("SYN\n")
+end
+
+
+function OnNewOperation()
+   textCache = textCache .. ";Operation: " .. operationName .. "\n"
+end
+
+function OnComment()
+  post.Text(";",commentText,"\n")
+end
+
+function OnToolChange()
+   if(nNo == 0) then
+      DoInit()
+   else
+      DoG600()
+   end
+end
+
+function OnNewPart()
+   textCache = textCache .. ";Part: " .. partName .. "\n";
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

@@ -1,0 +1,106 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Delta Tau waterjet post processor\n")
+end
+
+
+--dwell = " DWELL "
+dwell = " G4X"
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" G90G17G20G40G80\n G92.1\n")
+   post.Text (" M21\n M22\n M23\n M24\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+end
+
+
+function OnFinish()
+   post.Text (" M02\n")
+end
+
+function OnRapid()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   if(endX > 1e30) then return end
+   post.Text (" G00")
+   post.NonModalNumber (" X", endX * scale, "0.0###")
+   post.NonModalNumber (" Y", endY * scale, "0.0###")
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.Text (" G01")
+   post.NonModalNumber (" X", endX * scale, "0.0###")
+   post.NonModalNumber (" Y", endY * scale, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.0")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text (" G03")
+   else
+      post.Text (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0###")
+   post.NonModalNumber (" Y", endY * scale, "0.0###")
+   post.NonModalNumber (" I",(arcCentreX - currentX) * scale, "0.0###")
+   post.NonModalNumber (" J",(arcCentreY - currentY) * scale, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.0")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if (preheat > 0) then
+      post.Text (dwell)
+      post.Number (preheat ,"0.0#")
+      post.Eol()
+   end
+
+   post.Text(" M11\n")
+   if(tool >= 100) then
+      post.Text(" M12\n")
+   end
+   if(tool >= 100) then
+      post.Text(" M13\n")
+   end
+   if(tool >= 100) then
+      post.Text(" M14\n")
+   end
+   if (pierceDelay > 0) then
+      post.Text (dwell)
+      post.Number (pierceDelay ,"0.0#")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   post.Text(" M21\n")
+   if(tool >= 100) then
+      post.Text(" M22\n")
+   end
+   if(tool >= 100) then
+      post.Text(" M23\n")
+   end
+   if(tool >= 100) then
+      post.Text(" M24\n")
+   end
+
+   if (endDelay > 0) then
+      post.Text (dwell)
+      post.Number (endDelay ,"0.0#")
+      post.Eol()
+   end
+end
+
+
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   OnPenUp()
+end

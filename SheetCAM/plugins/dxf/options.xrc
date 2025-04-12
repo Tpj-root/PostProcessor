@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<resource xmlns="http://www.wxwidgets.org/wxxrc">
+	<object class="wxDialog" name="Options">
+		<title>File options</title>
+		<centered>1</centered>
+		<object class="wxBoxSizer">
+			<orient>wxVERTICAL</orient>
+			<object class="sizeritem">
+				<object class="wxBoxSizer">
+					<object class="sizeritem">
+						<object class="wxRadioBox" name="ID_FILESCALE">
+							<label>File scale</label>
+							<content>
+								<item>Inches</item>
+								<item>Metric</item>
+							</content>
+							<default>-1</default>
+							<style>wxRA_HORIZONTAL</style>
+						</object>
+						<flag>wxTOP|wxBOTTOM|wxLEFT|wxEXPAND|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL</flag>
+						<border>5d</border>
+					</object>
+					<object class="sizeritem">
+						<object class="wxRadioBox" name="ID_DWGORIGIN">
+							<label>Drawing origin</label>
+							<content>
+								<item>Bottom left</item>
+								<item>Centered on 0,0</item>
+								<item>Drawing origin</item>
+								<item>Current position</item>
+								<item>Material bottom left</item>
+							</content>
+							<default>-1</default>
+							<dimension>2</dimension>
+							<style>wxRA_SPECIFY_ROWS</style>
+						</object>
+						<flag>wxALL|wxEXPAND|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL</flag>
+						<border>5d</border>
+					</object>
+				</object>
+				<flag>wxALL|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL</flag>
+			</object>
+			<object class="sizeritem">
+				<object class="wxCheckBox" name="ID_USEPOINTS">
+					<label>Use points for drilling</label>
+				</object>
+				<flag>wxALL|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL</flag>
+			</object>
+			<object class="sizeritem">
+				<object class="wxButton" name="wxID_OK">
+					<default>1</default>
+				</object>
+				<flag>wxALL|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL</flag>
+				<border>3d</border>
+			</object>
+		</object>
+	</object>
+</resource>

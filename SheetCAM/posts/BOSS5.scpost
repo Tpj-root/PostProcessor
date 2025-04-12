@@ -1,0 +1,179 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("BOSS 4/5 post\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("No coolant control\n")
+   ctrl:AppendText("Absolute I,J\n")
+   ctrl:AppendText("Helical interpolation done as linear moves\n")
+end
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   revision 7/10/05
+--   Added new arc handling
+
+--   revision 20/10/04
+--   added tool length offsets
+
+--  Modified from TurboCNC post 27/8/04
+
+-- special notes: absolute IJ arcs, G75 turns on multiquadrant arcs
+
+
+
+function OnInit()
+   post.SetCommentChars ("();", "[]:")  --make sure ( and ) characters do not appear in system text
+   if(scale == metric) then
+      post.Text ("G71\n") --metric mode
+      numformat = "0.000"
+      feedformat = "0"
+   else
+      post.Text ("G70\n") --inch mode
+      numformat = "0.0000"
+      feedformat = "0.0"
+   end
+   post.Text ("G17")  --XY plane
+   post.Text ("G94")  --feed in units/min
+   post.Text ("G90")  --absolute
+   post.Text ("G75\n") --multiquadrant mode
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text ("M05M30\n")
+end
+
+function OnRapid()
+   post.ModalText ("G00")
+   post.ModalNumber ("X", endX * scale, numformat)
+   post.ModalNumber ("Y", endY * scale, numformat)
+   post.ModalNumber ("Z", (endZ + toolOffset) * scale, numformat)
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalText ("G01")
+   post.ModalNumber ("X", endX * scale, numformat)
+   post.ModalNumber ("Y", endY * scale, numformat)
+   post.ModalNumber ("Z", (endZ + toolOffset) * scale, numformat)
+   post.ModalNumber ("F", feedRate * scale, feedformat)
+   post.ModalNumber ("S", spindleSpeed, "0")
+   post.Eol()
+end
+
+function OnArc()
+   if(currentZ == endZ) then
+      if(arcAngle <0) then
+         post.ModalText ("G03")  --use circ moves
+      else
+         post.ModalText ("G02")  --use circ moves
+      end
+      post.ModalNumber ("X", endX * scale, numformat)
+      post.ModalNumber ("Y", endY * scale, numformat)
+      post.Text ("I")
+      post.Number (arcCentreX * scale, numformat)
+      post.Text ("J")
+      post.Number (arcCentreX * scale, numformat)
+      post.ModalNumber ("F", feedRate * scale, feedformat)
+      post.ModalNumber ("S", spindleSpeed, "0")
+      post.Eol()
+   else
+      post.ArcAsMoves(0.05);
+   end
+end
+
+
+function OnSpindleCW()
+   post.Text ("M03")
+   post.ModalNumber ("S", spindleSpeed, "0")
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.Text ("M04")
+   post.ModalNumber ("S", spindleSpeed, "0")
+   post.Eol()
+end
+
+function OnSpindleOff()
+   post.Text ("M05\n")
+end
+
+
+function OnNewOperation()
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnToolChange()
+   post.Text ("M6T")
+   post.Number (tool, "0")
+end
+
+
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+function OnFloodOn()
+--   text("M08\n")
+end
+
+function OnMistOn()
+--   text("M07\n")
+end
+
+function OnCoolantOff()
+--   text("M09\n")
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end

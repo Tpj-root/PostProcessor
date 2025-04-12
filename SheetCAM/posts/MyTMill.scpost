@@ -1,0 +1,156 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("My'T Mill post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non Modal G-codes and coordinates\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("no coolant or toolchange\n")
+   ctrl:AppendText("fixed to inch units\n")
+   ctrl:AppendText("no spindle control\n")
+end
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   revision 7/10/05
+--   Added new arc handling
+
+--created 19/12/04 based on TurboCNC.post
+
+
+function OnInit()
+   post.SetCommentChars ("();", "[]:")  --make sure ( and ) characters do not appear in system text
+   post.Text (" ;Filename: ", fileName, "\n")
+   post.Text (" ;Post processor: ", postName, " V1.1\n")
+   post.Text (" ;Date: ", date, "\n")
+   scale = 1/25.4   --force inch units
+   post.Text (" G17\n")  --XY plane
+   post.Text (" G90\n")  --absolute
+   toolOffset = 0
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+end
+
+function OnRapid()
+   post.Text (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.Text (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.######")
+   post.Eol()
+end
+
+function OnArc()
+   if(currentZ == endZ) then
+      if(arcAngle <0) then
+         post.Text (" G03")  --use circ moves
+      else
+         post.Text (" G02")  --use circ moves
+      end
+      post.ModalNumber (" X", endX * scale, "0.0000")
+      post.ModalNumber (" Y", endY * scale, "0.0000")
+      post.Text (" I")
+      post.Number ((arcCentreX - currentX) * scale, "0.0000")
+      post.Text (" J")
+      post.Number ((arcCentreY - currentY) * scale, "0.0000")
+      post.ModalNumber (" F", feedRate * scale, "0.0###")
+      post.Eol()
+   else
+      post.ArcAsMoves(0.05)
+   end
+end
+
+
+function OnSpindleCW()
+end
+
+function OnSpindleCCW()
+end
+
+function OnSpindleOff()
+end
+
+
+function OnNewOperation()
+   post.Text (" ;Operation: ", operationName, "\n")
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(" ;",commentText,"\n")
+end
+
+function OnToolChange()
+   post.Text (" ;", toolName, "\n")
+   post.Eol()
+end
+
+
+
+function OnSpindleChanged()
+end
+
+function OnFloodOn()
+end
+
+function OnMistOn()
+end
+
+function OnCoolantOff()
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end

@@ -1,0 +1,156 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Minimum G-code no arcs post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Min spec g-code for compatibility with as many controllers as possible\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("No comments\n")
+   ctrl:AppendText("Arcs are output as many line segments\n")
+   ctrl:AppendText("G-codes used:\n")
+   ctrl:AppendText("G00,G01,G20,G21\n")
+   ctrl:AppendText("M-codes used:\n")
+   ctrl:AppendText("M03,M04,M05,M07,M08,M09\n")
+end
+
+
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   Created 19/10/2004
+--   based on Mach2.post
+
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   if(scale == metric) then
+      post.Text (" G21\n") --metric mode
+   else
+      post.Text (" G20\n") --inch mode
+   end
+--   text (" G40\n F1\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M05\n M30\n")
+end
+
+function OnRapid()
+   post.Text (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.Text (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnArc()
+   post.ArcAsMoves(0.02)
+end
+
+
+function OnSpindleCW()
+   post.Text (" M03")
+--   modalnumber (" S", spindlespeed, "0.##")
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.Text (" M04")
+--   modalnumber (" S", spindlespeed, "0.##")
+   post.Eol()
+end
+
+function OnSpindleOff()
+   post.Text (" M05\n")
+end
+
+
+function OnNewOperation()
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnToolChange()
+   post.Text (" M6 T")
+   post.Number (tool, "0")
+   post.Eol()
+end
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+function OnNewPart()
+end
+
+
+function OnFloodOn()
+   post.Text(" M08\n")
+end
+
+function OnMistOn()
+   post.Text(" M07\n")
+end
+
+function OnCoolantOff()
+   post.Text(" M09\n")
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end

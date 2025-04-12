@@ -1,0 +1,151 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("RoutOut post processor\n")
+end
+
+
+--  Created 26/9/04
+
+
+function OnInit()
+   scale = 100
+   post.Text ("REM Filename: ", fileName, "\n")
+   post.Text ("REM Post processor: ", postName, "\n")
+   post.Text ("REM Date: ", date, "\n")
+   post.NonModalNumber ("PointsPerMm ",scale,"#")
+   post.Eol()
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.1 --arcs smaller than this are converted to moves
+
+   curx =0
+   cury =0
+   curz =0
+end
+
+function OnNewLine()
+end
+
+
+function OnFinish()
+   endZ = safeZ
+   OnRapid()
+   endX = 0
+   endY = 0
+   OnRapid()  --finish at 0,0
+end
+
+function OnRapid()
+   OnMove()
+end
+
+function OnMove()
+   if(endZ ~= currentZ) then
+      if(endX != currentX or endY ~= currentY) --can't do 3D move
+         post.Error("This machine cannot do 3D moves")
+         return
+      end
+      tmp = (currentZ * scale) - curz
+      tmp = math.toint(tmp)
+      curz = curz + tmp
+      nonmodaltext("MoveZ ",tmp,"#");
+   else
+      post.Text("MoveXY ")
+      tmp = (currentX * scale) - curx
+      tmp = math.toint(tmp)
+      curx = curx + tmp
+      post.Number(tmp,"#")
+
+      tmp = (currentY * scale) - cury
+      tmp = math.toint(tmp)
+      cury = cury + tmp
+      post.Number(tmp,"#")
+   end
+   post.Eol()
+end
+
+function OnArc()
+   post.ArcAsMoves(0.04)
+end
+
+function OnSpindleCW()
+   post.Text ("AUX1 1\n")
+end
+
+function OnSpindleCCW()
+   post.Text ("AUX1 1\n")
+end
+
+function OnSpindleOff()
+   post.Text ("AUX1 0\n")
+end
+
+function OnSetFeed()
+
+end
+
+function OnNewOperation()
+   post.Text ("REM Operation: ", operationName, "\n")
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnToolChange()
+   post.Text ("REM ", toolName, "\n")
+   post.Text ("ChangeTool ")
+   post.Number (tool, "0")
+   post.Eol()
+end
+
+
+
+function OnSpindleChanged()
+end
+
+function OnFloodOn()
+   post.Text ("AUX2 1")
+end
+
+function OnMistOn()
+   post.Text ("AUX3 1")
+end
+
+function OnCoolantOff()
+   post.Text ("AUX2 0")
+   post.Text ("AUX3 0")
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end

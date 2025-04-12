@@ -1,0 +1,154 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+end
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Generated Using) \n")
+   post.Text (" (Robotshop Post Processor) \n")
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G53 G90 G40 F1\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M05\n")
+   endX = 0
+   endY = 0
+   OnRapid()
+   post.Text (" M30\n")
+end
+
+function OnRapid()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+--   modalnumber (" Z", endz * scale, "0.0000")
+   post.Text (" F11000")
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+--   modalnumber (" Z", endz * scale, "0.0000")
+   post.Text (" F")
+   post.Number ((feedRate)* scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" g02")
+   end
+   if(currentZ == endZ) then
+      if(arcAngle <0) then
+         post.ModalText (" G03")  --use circ moves
+      else
+         post.ModalText (" g02")  --use circ moves
+      end
+      post.ModalNumber (" X", endX * scale, "0.0000")
+      post.ModalNumber (" Y", endY * scale, "0.0000")
+   else
+      post.Warning("WARNING: You cannot use ramped leadins with this machine")
+      if(arcAngle <0) then
+         post.ModalText (" G03")  --use helical moves
+      else
+         post.ModalText (" g02")  --use helical moves
+      end
+      post.ModalNumber (" X", endX * scale, "0.0000")
+      post.ModalNumber (" Y", endY * scale, "0.0000")
+--      modalnumber (" Z", endz * scale, "0.0000")
+   end
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.Text (" F")
+   post.Number ((feedRate * 0.7)* scale, "0.###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+--   modaltext (" G00")
+--   modalnumber (" Z", pierceheight * scale, "0.0000")
+   if(tool <100) then
+      if (preheat > 0) then
+         post.Text ("\n G04 P")
+         post.Number (preheat,"0.###")
+         post.Eol()
+      end
+      post.Text ("\n M03\n")
+      if (pierceDelay > 0) then
+         post.Text (" G04 P")
+         post.Number (pierceDelay,"0.###")
+         post.Eol()
+      end
+   else
+      post.Text (" M04\n")
+   end
+end
+
+
+function OnPenUp()
+   post.Text (" M05\n")
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+   post.Text (" F11000")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

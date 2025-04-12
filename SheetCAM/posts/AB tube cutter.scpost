@@ -1,0 +1,191 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Allen Bradley custom pipe cutter\n")
+   ctrl:AppendText("\n")
+end
+
+
+post.DefineVariable("diameter",sc.unitLinear,0,1e17)
+post.DefineVariable("offset",sc.unitLinear,0,1e17)
+
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+
+   nonumbers = 1
+   post.Text("O",fileNameOnly,"\n")
+   nonumbers = 0
+   lineNumber = 10
+
+   post.Text (" (Filename    : ", fileName, ")\n")
+--   text (" (Post processor: ", postname, ")\n")
+--   text (" (Date: ", date, ")\n")
+
+   if(scale == metric) then
+      post.Text (" G21 (Units   : Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units   : Inches)\n") --inch mode
+   end
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   rampon = 0
+   oldramp = -1
+   curx = 0
+   cury = 0
+   offset = 0
+   xOff = 0
+end
+
+
+function checkramp()
+   if(rampon == oldramp) then return end
+   oldramp = rampon
+   if(rampon ~=0) then
+      zamount = -130
+      post.Text(" (RAMPING ON  : Yes)\n")
+      post.Text(" #1135=60\n")
+   else
+      post.Text(" (RAMPING ON  : No)\n")
+      zamount = -100
+   end
+   post.Text(" (date        : ", date, " ",time,")\n");
+   post.Text(" #33=.450\n")
+   post.Text (" G90\n")
+   g90 = 1
+end
+
+function OnNewLine()
+   if nonumbers==1 then return end
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M27\n")
+   post.Text (" M05\n")
+   xOff = 0
+   moveZ(0)
+   endX = 0
+   endY = 0
+   OnRapid()
+   post.Text (" M30\n")
+end
+
+function moveZ(zpos)
+   if(g90 ~= 1) then
+     post.Text (" G90\n")
+     g90 = 1
+     post.CancelModalNumbers()
+   end
+   post.ModalText (" G00")
+   post.ModalNumber (" Z", zpos * scale, "0.0##")
+   post.Eol()
+end
+
+function OnRapid()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   if(g90 ~= 1) then
+     post.Text (" G90\n")
+     g90 = 1
+     post.CancelModalNumbers()
+   end
+
+   post.ModalText (" G00")
+   curx = (endX + xOff) * scale
+   cury = endY * cscale
+   post.ModalNumber (" X", (endX + xOff) * scale, "0.0##")
+   post.ModalNumber (" C", endY * cscale, "0.0##")
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   if(g90 == 1) then
+     post.Text (" G91\n")
+     g90 = 0
+   end
+   post.ModalText (" G01")
+
+   tmp = ((endX + xOff) * scale) - curx
+   tmp = math.toint(tmp * 100)/100
+   curx = curx + tmp
+   if(tmp ~= 0) then
+      post.NonModalNumber (" X", tmp, "0.0##")
+   end
+
+   tmp = (endY * cscale) - cury
+   tmp = math.toint(tmp * 100)/100
+   cury = cury + tmp
+   if(tmp ~= 0) then
+      post.NonModalNumber (" C", tmp, "0.0##")
+   end
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   post.ArcAsMoves(0.1)
+end
+
+
+function OnPenDown()
+   moveZ(zamount)
+   post.Text(" M51\n")
+   post.Text(" S45\n")
+   post.Text(" M61\n")
+   post.Text(" M03\n")
+   post.Text(" M22\n")
+   post.Text(" G04 P #33\n")
+   post.Text(" S80\n")
+end
+
+
+function OnPenUp()
+   post.Text(" M23\n")
+   post.Text(" M09\n")
+   moveZ(zamount)
+   xOff = -offset
+end
+
+
+function OnNewOperation()
+   if ((feedRate <= 0) and (operationClass ~= "VariableOperation")) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnSetFeed()
+   if(diameter == nil) then
+      post.Error("You need to define the diameter")
+   end
+   cscale = 360 / (math.pi * diameter)
+   checkramp()
+   moveZ(zamount)
+--   text(" (FEEDRATE    : 3500)\n")
+end
+
+function OnToolChange()
+
+end
+
+function OnNewPart()
+   post.Text(" (Part        : ",partName,")\n");
+end
+
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

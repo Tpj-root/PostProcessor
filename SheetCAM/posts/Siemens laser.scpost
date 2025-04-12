@@ -1,0 +1,102 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Siemens laser cutter post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("L9995 L9996  turn the torch on\n")
+   ctrl:AppendText("L9997  turn the torch off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--   created 03/03/08
+--   Based on Mach2 plasma.post
+
+
+post.ForceExtension("NC")
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text("%_N_PKJO_MPF\n")
+   post.Text(";$PATH=/_N_MPF_DIR\n")
+--[[   post.Text ("(Filename: ", fileName, ");\n")
+   post.Text ("(Post processor: ", postName, ");\n")
+   post.Text ("(Date: ", date, ");\n")
+   if(scale == metric) then
+      post.Text ("G21 (Units: Metric);\n") --metric mode
+   else
+      post.Text ("G20 (Units: Inches);\n") --inch mode
+   end
+   post.Text ("G90 G40;\n")]]
+   if(scale == metric) then
+      format = "0.0#"
+   else
+      format = "0.0##"
+   end
+end
+
+
+
+function OnFinish()
+   post.Text ("L9998\nM30\n\n")
+end
+
+function OnRapid()
+   if(endX > 1e10 or endY > 1e10) then return end
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText ("G0")
+   post.ModalNumber ("X", endX * scale, format)
+   post.ModalNumber ("Y", endY * scale, format)
+   post.Text("\n")
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText ("G01")
+   post.ModalNumber ("X", endX * scale, format)
+   post.ModalNumber ("Y", endY * scale, format)
+   post.NonModalNumber ("F", feedRate * scale, "0")
+   post.Text("\n")
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText ("G03")
+   else
+      post.ModalText ("G02")
+   end
+   post.NonModalNumber ("X", endX * scale, format)
+   post.NonModalNumber ("Y", endY * scale, format)
+   post.ModalNumber ("Z", endZ * scale, format)
+   post.Text ("I")
+   post.Number ((arcCentreX - currentX) * scale, format)
+   post.Text ("J")
+   post.Number ((arcCentreY - currentY) * scale, format)
+   post.NonModalNumber ("F", feedRate * scale, "0")
+   post.Text("\n")
+end
+
+
+function OnPenDown()
+   post.Text ("L9995\nL9996\n")
+end
+
+
+function OnPenUp()
+   post.Text ("L9997\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

@@ -1,0 +1,166 @@
+post.ForceExtension("cnc")
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Multicam router post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+--   Created 29/4/2010
+
+function OnInit()
+   lineNumber = 10
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" //Filename: ", fileName, "\n")
+   post.Text (" //Post processor: ", postName, "\n")
+   post.Text (" //Date: ", date, "\n")
+--   if(scale == metric) then
+--      post.Text (" G21 (Units: Metric)\n") --metric mode
+--   else
+--      post.Text (" G20 (Units: Inches)\n") --inch mode
+--   end
+   post.Text (" G40\n G90\n G74\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M05\n M02\n")
+end
+
+
+function OnRapid()
+   post.Text (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0###")
+   post.ModalNumber (" Y", endY * scale, "0.0###")
+   if(endZ < 1e17) then
+      post.ModalNumber (" Z", (endZ + toolOffset) * (-scale), "0.0###")
+   end
+   post.Eol()
+
+end
+
+function OnMove()
+   post.Text (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0###")
+   post.ModalNumber (" Y", endY * scale, "0.0###")
+   post.ModalNumber (" Z", (endZ + toolOffset) * (-scale), "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+    post.ArcAsMoves(0.1)
+end
+
+
+function OnSpindleCW()
+   post.Text (" M03")
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.Text (" M04")
+   post.Eol()
+end
+
+function OnSpindleOff()
+   post.Text (" M05\n")
+end
+
+
+function OnNewOperation()
+   post.Text (" //Operation: ", operationName, "\n")
+end
+
+function OnComment()
+  post.Text(" //",commentText,"\n")
+end
+
+
+function OnToolChange()
+   post.Text (" G00 C", toolName, "\n")
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+   post.Text (" G97 S")
+   post.Number ( spindleSpeed, "0")
+   post.Eol();
+end
+
+function OnNewPart()
+   post.Text(" //Part: ",partName,"\n");
+end
+
+
+function OnFloodOn()
+--   post.Text(" M08 (Flood coolant on)\n")
+end
+
+function OnMistOn()
+--   post.Text(" M07 (Mist coolant on)\n")
+end
+
+function OnCoolantOff()
+--   post.Text(" M09 (Coolant off)\n")
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end
+
+function OnSetFeed()
+end
+
+function OnTapStart()
+    post.Warning("This machine does not support tapping")
+end
+
+

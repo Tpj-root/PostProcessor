@@ -1,0 +1,338 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Heidenhain TNC530 conversational post\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Uses Heidenhain TNC150 conversational code\n")
+end
+
+
+
+--   Created 10/1/2009
+--   based on mach2.post
+
+--http://cnctrain.com/_wsn/page13.html
+
+function OnInit()
+   nolines = false
+   post.SetCommentChars ("();", "[]:")  --make sure ( and ) characters do not appear in system text
+   post.Text(" BEGIN PGM ", fileNameOnly)
+
+   if(scale == metric) then
+      post.Text (" MM\n") --metric mode
+      numFormat = "+0.000"
+   else
+      post.Text (" INCH\n") --inch mode
+      numFormat = "+0.0000"
+   end
+   ms = {nil,nil}
+   toolList={}
+
+   oldFeed = -1
+   post.Text(" BLK FORM 0.1 Z X")
+   post.Number(materialX1,"+0.###")
+   post.Text(" Y")
+   post.Number(materialY1,"+0.###")
+   post.Text(" Z")
+   post.Number(-materialThick,"+0.###")
+   post.Text(" ;material min extent\n")
+
+   post.Text(" BLK FORM 0.2 X")
+   post.Number(materialX2,"+0.###")
+   post.Text(" Y")
+   post.Number(materialY2,"+0.###")
+   post.Text(" Z+0 ;material max extent\n")
+
+   post.Text(" ;Date : ", date, " ", time, "\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   if nolines then return end
+   post.Number (lineNumber, "0")
+   lineNumber = lineNumber + 1
+end
+
+
+function OnFinish()
+   post.Text (" M02\n")
+   post.Text(" END PGM ", fileNameOnly)
+   if(scale == metric) then
+      post.Text (" MM\n") --metric mode
+   else
+      post.Text (" INCH\n") --inch mode
+   end
+end
+
+function OnRapid()
+   if((math.abs(currentX - endX) < 0.001) and (math.abs(currentY - endY) < 0.001) and (math.abs(currentZ - endZ) < 0.001)) then return end
+   post.Text (" L")
+   post.ModalNumber (" X", endX * scale, numFormat)
+   post.ModalNumber (" Y", endY * scale, numFormat)
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, numFormat)
+   post.Text(" FMAX")
+   checkM()
+   post.Eol()
+end
+
+function OnMove()
+   post.Text (" L")
+   post.ModalNumber (" X", endX * scale, numFormat)
+   post.ModalNumber (" Y", endY * scale, numFormat)
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, numFormat)
+   CheckFeed(feedRate)
+   checkM()
+   post.Eol()
+end
+
+function OnArc()
+   post.Text (" CC")
+   post.NonModalNumber(" X", arcCentreX * scale, numFormat)
+   post.NonModalNumber(" Y", arcCentreY * scale, numFormat)
+   post.Eol()
+   if (endZ == currentZ) then
+      post.Text (" C")
+      post.NonModalNumber (" X", endX * scale, numFormat)
+      post.NonModalNumber (" Y", endY * scale, numFormat)
+      post.ModalNumber (" Z", (endZ + toolOffset) * scale, numFormat)
+      if (arcAngle <0) then
+         post.Text(" DR+")
+      else
+         post.Text(" DR-")
+      end
+      post.Text(" R0")
+   else
+      post.Text(" CP")
+      post.NonModalNumber(" IPA",arcAngle * 57.295779513082320876798154814105,numFormat)
+      if (arcAngle <0) then
+         post.Text(" DR+")
+      else
+         post.Text(" DR-")
+      end
+   end
+   CheckFeed(feedRate)
+   checkM()
+   post.Eol()
+end
+
+function CheckFeed(fd)
+   if(fd == oldFeed) then
+--      post.Text(" F")
+      return
+   end
+   oldFeed = fd
+   fd = math.toint((fd * scale) + 0.5)
+   if(fd == 0) then
+      fd = 1
+   end
+   post.NonModalNumber (" F", fd, "0.###")
+end
+
+function checkM()
+   if ms[1] then
+      post.Text(" " .. ms[1])
+      ms[1] = nil
+   end
+   if ms[0] then
+      post.Text(" " .. ms[0])
+      ms[0] = nil
+   end
+end
+
+function OnSpindleCW()
+--   text (" M03\n")
+--   modalnumber (" S", spindlespeed, "0.##")
+--   eol()
+   ms[1] = "M03"
+end
+
+function OnSpindleCCW()
+--   text (" M04")
+--   modalnumber (" S", spindlespeed, "0.##")
+--   eol()
+   ms[1] = "M04"
+end
+
+function OnSpindleOff()
+--   text (" M05\n")
+   ms[1] = "M05"
+end
+
+
+function OnNewOperation()
+   post.Text (" ;Operation: ", operationName, "\n")
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnNewPart()
+   post.Text(" ;Part: ",partName,"\n");
+end
+
+function OnComment()
+   post.Text(" ;",commentText,"\n")
+end
+
+toolList = {}
+
+function OnToolChange()
+--   post.Text(" TOOL DEF ")
+--   post.Number (tool, "0")
+--   post.Text(" L+0.000 R+0.000\n")
+   if not toolList[tool] then
+      post.Text(" TOOL DEF ")
+      post.Number (tool, "0")
+      post.Text(" L+0.000 R+0.000\n")
+      toolList[tool] = true;
+   end
+   post.Text(" TOOL CALL ")
+   post.Number (tool, "0")
+   post.Text(" Z")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Text(" ;" .. toolName)
+   post.Eol()
+end
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+
+function OnFloodOn()
+--   text(" M08\n")
+   ms[0] = "M08"
+end
+
+function OnMistOn()
+--   text(" M08\n")
+   ms[0] = "M08"
+end
+
+function OnCoolantOff()
+--   text(" M09\n")
+   ms[0] = "M09"
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   currentX = endX
+   currentY = endY
+   currentZ = endZ
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      currentZ = endZ
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      currentZ = endZ
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+         currentZ = endZ
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end
+
+function OnSetFeed()
+end
+
+function OnTapStart()
+   tapStarted = true
+end
+
+function OnAutoTap()
+   clearance = 1 --tapping clearance height
+
+--move to hole X,Y coordinates
+   OnRapid()
+
+--move to tapping clearance height
+   clearance = clearance + drillStart
+   endZ = clearance
+   OnRapid()
+
+--feed to depth
+   feedRate = tapPitch * underFeed
+   OnSetFeed()
+   endZ = drillZ
+   OnMove()
+
+--retract to engage reverse clutch
+   endZ = drillZ + tapTravel
+   feedRate = 10000
+   OnMove()
+
+--feed out
+   feedRate = tapPitch * reverseMult * underFeed
+   endZ = tapTravel + clearance
+   OnMove()
+
+--retract to clearance plane
+   endZ = safeZ
+   OnRapid()
+
+end
+
+function OnRigidTap()
+   if tapStarted then
+      tapStarted = false
+      post.Text(" CYCL DEF 207 RIGID TAPPING NEW ~\n")
+      nolines = true
+      post.Text("   Q200=")
+      post.Number(plungeSafety  * scale, "+0.###")
+      post.Text("  ;Set-up clearance~\n")
+      post.Text("   Q201=")
+      post.Number(drillZ * scale,"+0.###")
+      post.Text("  ;Depth of thread~\n")
+      post.Text("   Q239=")
+      post.Number(tapPitch * scale,"+0.###")
+      post.Text("  ;Thread pitch~\n")
+      post.Text("   Q203=")
+      post.Number(drillStart * scale,"+0.###")
+      post.Text("  ;Start depth~\n")
+      post.Text("   Q204=")
+      post.Number(safeZ * scale,"+0.###")
+      post.Text("  ;Safe Z\n")
+      nolines = false
+   end
+
+   post.Text(" L")
+   post.ModalNumber (" X", endX * scale, numFormat)
+   post.ModalNumber (" Y", endY * scale, numFormat)
+   post.Text(" FMAX M99")
+      if ms[0] then
+      post.Text(" " .. ms[0])
+      ms[0] = nil
+   end
+   post.Eol()
+
+end
+
+
+function OnTapEnd()
+
+end

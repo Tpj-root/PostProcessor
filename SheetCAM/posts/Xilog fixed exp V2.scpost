@@ -1,0 +1,305 @@
+post.DefineVariable("outPath",-1,0,0)
+post.DefineVariable("ArcTol",sc.unit2DECPLACE,0,10000)
+post.DefineVariable("ArcNum",sc.unit0DECPLACE,0,10)
+--post.SetOption(post.ARC_SEGMENTS)
+
+ArcTol = 0
+ArcNum = 2
+
+-- Standardevents
+
+function OnAbout(event)
+    ctrl = event:GetTextCtrl()
+    ctrl:AppendText("Xilog post processor\n")
+    ctrl:AppendText("\n")
+    ctrl:AppendText("Author: Herbert Wols\n")
+    ctrl:AppendText("Modal coordinates\n")
+    ctrl:AppendText("Materialcoordinates\n")
+    ctrl:AppendText("Comments enclosed with * and ;\n")
+    ctrl:AppendText("uses G43 tool length offsets\n")
+end
+
+
+function OnInit()
+    -- Komments
+    post.SetCommentChars (";", "*")  --make sure * and ; characters do not appear in system text
+    -- initialize Postprozessing Options
+    bigArcs = 0          --stitch arc segments together
+    minArcSize = 0.05    --arcs smaller than this are converted to moves
+    bmode=1              -- 1=Use the B with Toolnumber for Drilling 2= use BO with Drilldiameter
+    zdir=1               -- 1 for positive Z-Values (Morbidelli) -1 for negativ Z-Values (SCM)
+    xval=1               -- Faktor zum invertieren der X-Werte Bei Anschlag rechts
+    yval=-1              -- Faktor zum invertieren der Y-Werte Bei Anschlag oben
+    winxiso="C:\\Programme\\Scm Group\\Xilog Plus/Bin\\Winxiso.exe"
+    outPath = filePath
+    x={}
+    y={}
+    d={}
+    u={}
+    v={}
+    mx={}
+    my={}
+    wi={}
+    r={}
+    dist={}
+    
+    HeaderPosted=0       -- set to 0 to post an Header before the first rapid
+    dircon=1
+    MoveCount=-1
+    OffsetX = (materialX1*(xval+1)/2)+(materialX2*(xval-1)/2)
+    OffsetY = (materialY1*(yval+1)/2)+(materialY2*(yval-1)/2)
+end
+   
+function OnNewEntity()
+    post.Text (" ; ")
+    post.Eol()
+end
+
+function OnRapid()
+    if ((newRoute==0) and (endZ < 0)) then --holding tab starts move in G1
+        OnMove()
+    else
+        if MoveCount>0 then
+            PostUnhandled ()
+        end
+        newRoute=1 --Tool in saveZ = normal rapid = do nothing
+    end
+end
+
+
+function OnMove ()
+
+    if (ArcTol == 0) or (newRoute==1) then
+        PostMove()
+        
+    elseif (currentZ~=endZ) then
+        rescueZ = endZ
+        endZ = currentZ
+        PostUnhandled ()
+        endZ = rescueZ
+        PostMove()
+    else
+    
+        MoveCount=MoveCount+1
+        x[MoveCount] = endX
+        y[MoveCount] = endY
+        
+        if MoveCount >= 2 then
+            d[MoveCount] = x[MoveCount]*y[MoveCount-1]+x[MoveCount-1]*y[MoveCount-2]+x[MoveCount-2]*y[MoveCount]-x[MoveCount]*y[MoveCount-2]-x[MoveCount-1]*y[MoveCount]-x[MoveCount-2]*y[MoveCount-1]
+            u[MoveCount] = (y[MoveCount-1]-y[MoveCount-2])*(x[MoveCount]^2+y[MoveCount]^2)+(y[MoveCount-2]-y[MoveCount])*(x[MoveCount-1]^2+y[MoveCount-1]^2)+(y[MoveCount]-y[MoveCount-1])*(x[MoveCount-2]^2+y[MoveCount-2]^2)
+            v[MoveCount] = (x[MoveCount-2]-x[MoveCount-1])*(x[MoveCount]^2+y[MoveCount]^2)+(x[MoveCount]-x[MoveCount-2])*(x[MoveCount-1]^2+y[MoveCount-1]^2)+(x[MoveCount-1]-x[MoveCount])*(x[MoveCount-2]^2+y[MoveCount-2]^2)
+            mx[MoveCount] = (1/2)*(u[MoveCount]/d[MoveCount])
+            my[MoveCount] = (1/2)*(v[MoveCount]/d[MoveCount])
+            r[MoveCount] = math.hypot((mx[MoveCount]-x[MoveCount]),(my[MoveCount]-y[MoveCount]))
+            
+            if MoveCount >=3 then
+                dist[MoveCount] = math.hypot(mx[MoveCount]-mx[2],my[MoveCount]-my[2])
+                
+                if dist[MoveCount]/r[MoveCount] > ArcTol/100 then
+                    MoveCount = MoveCount-2
+                    rescueMoveCount = MoveCount
+                    PostUnhandled (1)
+                    x[1],x[2]=x[rescueMoveCount+1],x[rescueMoveCount+2]
+                    y[1],y[2]=y[rescueMoveCount+1],y[rescueMoveCount+2]
+                    mx[2]=mx[rescueMoveCount+2]
+                    my[2]=my[rescueMoveCount+2]
+                    MoveCount=2
+                end
+            end
+        end
+    end
+end
+
+
+function OnArc()
+    if MoveCount<2 and MoveCount>0 then
+        PostUnhandled ()
+    end
+    
+    MoveCount = 0
+    x[MoveCount] = endX
+    y[MoveCount] = endY
+    
+    if(arcAngle * xval * yval < 0) then
+        post.Text (" G2")
+    else
+        post.Text (" G3")
+    end
+    PostKoords (1)
+    post.ModalNumber (" V", feedRate * scale, "0.")
+    post.Eol()
+end
+
+function OnNewOperation()
+    post.Text (" **Operation: ", operationName, "**\n")
+
+end
+
+function OnComment()
+    post.Text(" **",commentText,"**\n")
+end
+
+function OnNewPart()
+    if (HeaderPosted==0) then
+        PostHeader()
+        HeaderPosted=1
+    end
+    post.Text(" **Part: ",partName,"**\n");
+
+end
+
+
+function OnDrill()
+    if (bmode==1) then
+        post.Text (" B")
+        post.ModalNumber (" X=", xval * endX - OffsetX * scale, "0.###")
+        post.ModalNumber (" Y=", yval * endY - OffsetY * scale, "0.###")
+        post.NonModalNumber (" Z=", -zdir * (drillZ) * scale, "0.###")
+        post.ModalNumber (" V", feedRate * scale, "0.")
+        post.ModalNumber (" S", spindleSpeed, "0.")
+        post.ModalNumber (" T", tool, "0.")
+        post.Eol()
+    end
+    if (bmode==2) then
+        post.Text (" BO")
+        post.ModalNumber (" X=", xval * endX - OffsetX * scale, "0.###")
+        post.ModalNumber (" Y=", yval * endY - OffsetY * scale, "0.###")
+        post.NonModalNumber (" Z=", -zdir * (drillZ) * scale, "0.###")
+        post.ModalNumber (" V", feedRate * scale, "0.")
+        post.ModalNumber (" S", spindleSpeed, "0.")
+        post.ModalNumber (" D=", toolDia, "0.00")
+        if (toolAngle*57.29577951308<70) then
+            post.ModalText (" N=L")
+        end
+        if (toolAngle*57.29577951308>70 and toolAngle*57.29577951308<100) then
+            post.ModalText (" N=S")
+        end
+        if (toolAngle*57.29577951308>100) then
+            post.ModalText (" N=P")
+        end
+        post.Eol()
+    end
+
+end
+
+function OnFileClosed()
+    if (dircon==1) then
+        succnvrt=os.execute (winxiso.." \""..filePath..fileName.."\" -o \""..outPath..fileNameOnly..".pgm\" -s")
+        if (succnvrt ~= 0)then
+        post.Warning("Konvertieren in PGM schlug fehl!\n"..succnvrt)
+        end
+    end
+end
+
+-- OWN FUNCTIONS
+
+function PostUnhandled(arcs)
+
+    rescueX=endX
+    rescueY=endY
+   
+    if (MoveCount >= ArcNum) and (arcs ~= nil) then
+        mid = math.floor(MoveCount/2)
+        d[MoveCount] = x[MoveCount]*y[mid]+x[mid]*y[0]+x[0]*y[MoveCount]-x[MoveCount]*y[0]-x[mid]*y[MoveCount]-x[0]*y[mid]
+        u[MoveCount] = (y[mid]-y[0])*(x[MoveCount]^2+y[MoveCount]^2)+(y[0]-y[MoveCount])*(x[mid]^2+y[mid]^2)+(y[MoveCount]-y[mid])*(x[0]^2+y[0]^2)
+        v[MoveCount] = (x[0]-x[mid])*(x[MoveCount]^2+y[MoveCount]^2)+(x[MoveCount]-x[0])*(x[mid]^2+y[mid]^2)+(x[mid]-x[MoveCount])*(x[0]^2+y[0]^2)
+        mx[MoveCount] = (1/2)*(u[MoveCount]/d[MoveCount])
+        my[MoveCount] = (1/2)*(v[MoveCount]/d[MoveCount])
+        r[MoveCount] = math.hypot((mx[MoveCount]-x[MoveCount]),(my[MoveCount]-y[MoveCount]))
+        wi[0] = math.acos ((x[0]-mx[MoveCount])/r[MoveCount]) * (y[0]-my[MoveCount]) / math.abs(y[0]-my[MoveCount])
+        wi[mid] = math.acos ((x[mid]-mx[MoveCount])/r[MoveCount]) * (y[mid]-my[MoveCount]) / math.abs(y[mid]-my[MoveCount])
+        wi[MoveCount] = math.acos ((x[MoveCount]-mx[MoveCount])/r[MoveCount]) * (y[MoveCount]-my[MoveCount]) / math.abs(y[MoveCount]-my[MoveCount])
+        arb=1
+        dir=0
+        
+        if (wi[0] > wi[mid] and wi[mid] > wi[MoveCount]) or (wi[0] < wi[mid] and wi[mid] < wi[MoveCount]) then
+            arcAngle = (wi[0]-wi[MoveCount])
+        else
+            arcAngle = (wi[MoveCount]-wi[0])
+        end
+        
+        currentX=x[0]
+        currentY=y[0]
+        endX=x[MoveCount]
+        endY=y[MoveCount]
+        arcCentreX = mx[MoveCount]
+        arcCentreY = my[MoveCount]
+        OnArc ()
+    else
+        arb=1
+        RescueMoveCount = MoveCount
+        while arb <= RescueMoveCount do
+            endX = x[arb]
+            endY = y[arb]
+            currentX = x[arb-1]
+            currentY = y[arb-1]
+            PostMove()
+            arb = arb+1
+        end
+    end
+    
+    currentX = endX
+    currentY = endY
+    endX=rescueX
+    endY=rescueY
+    end
+
+
+function PostMove()
+    MoveCount=0
+    x[MoveCount] = endX
+    y[MoveCount] = endY
+    
+    if (newRoute==1) then
+        post.Text (" C0 \n")
+        post.Text (" G0")
+        PostKoords (0)
+        post.ModalNumber (" V", feedRate * scale, "0.")
+        post.ModalNumber (" S", spindleSpeed, "0.")
+        post.ModalNumber (" T", tool, "0.")
+        post.Eol()
+        newRoute=0
+    else
+        -- make empty g1 lines impossibile
+        if (math.abs(endX-currentX) + math.abs(endY-currentY) + math.abs(endZ-currentZ))>0.01 then 
+            post.Text (" G1")
+            PostKoords (0)
+            post.ModalNumber (" V", feedRate * scale, "0.")
+            post.Eol()
+        end
+    end
+end
+
+function PostKoords (ij)
+
+    post.ModalNumber (" X=", xval * endX - OffsetX * scale, "0.###")
+    post.ModalNumber (" Y=", yval * endY - OffsetY * scale, "0.###")
+    post.ModalNumber (" Z=", -zdir * (endZ + toolOffset) * scale, "0.###")
+    if ij == 1 then
+        post.NonModalNumber (" I=", xval * arcCentreX - OffsetX * scale, "0.###")
+        post.NonModalNumber (" J=", yval * arcCentreY - OffsetY * scale, "0.###")
+    end
+end
+
+function PostHeader()
+    -- Begin Post Header
+    post.Text ("H")
+    post.NonModalNumber (" DX", (materialX2-materialX1) * scale, "0.###")
+    post.NonModalNumber (" DY", (materialY2-materialY1) * scale, "0.###")
+    post.NonModalNumber (" DZ", materialThick * scale, "0.###")
+    post.Text (" -A R1")
+    if(scale == metric) then
+        post.Text (" *MM") --metric mode
+    else
+        post.Text (" *IN") --inch mode
+    end
+    post.Text (" /DEF") --Name of the Toolfile
+   
+    post.NonModalNumber (" BX=", OffsetX * scale, "0.###")
+    post.NonModalNumber (" BY=", OffsetY * scale, "0.###")
+   
+    post.Text (" ;", fileName)
+    post.Eol()
+    post.Text (" **Post processor: ", postName, "**\n")
+    post.Text (" **Date: ", date, "**\n")
+end

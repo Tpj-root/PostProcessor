@@ -1,0 +1,180 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Mazak post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Designed for use with machine having fully automatic thc\n")
+   ctrl:AppendText("Tool numbers 100 and higher are oxy-fuel, lower are plasma\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M98 P8119/M98 P8011 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+post.DefineCustomOption("Program number","progNum",sc.unit0DECPLACE,0,9999)
+
+function OnInit()
+   post.ShowCustomOptions("Enter the program number")
+   nolines = true
+   post.Text("%\n")
+   post.Text("O")
+   post.Number(progNum,"0000")
+   post.Eol()
+   nolines = nil
+   lineNumber = 10
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   post.Text (" G90 G92 X0.0 Y0.0\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   oldfeed = -1
+end
+
+function OnNewLine()
+   if(nolines) then return end
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   if(toolClass == "LaserTool") then
+      if (endZ ~= safeZ) then
+         post.Text(" G91 G0 Z")
+         post.Number((endZ - safeZ) * scale, "0.0000")
+         post.Text("\n G90\n")
+      end
+      post.Text (" M30\n")
+   else
+      post.Text (" G91 G28 Z0.0\n G91 G28 X0.0 Y0.0\n G90\n M30\n")-- M99\n")
+   end
+   nolines = true
+   post.Text("%\n")
+end
+
+function OnRapid()
+---text(currentx," ",currenty," ",endx," ",endy)
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   if(endX > 1e17 and endY > 1e17) then return end
+   CheckFeed()
+   post.Text (" G00")
+   if(endX < 1e17) then
+      post.NonModalNumber (" X", endX * scale, "0.0000")
+   end
+   if(endY < 1e17) then
+      post.NonModalNumber (" Y", endY * scale, "0.0000")
+   end
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   CheckFeed()
+   post.Text (" G01")
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnArc()
+   CheckFeed()
+   if(arcAngle <0) then
+      post.Text (" G03")
+   else
+      post.Text (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.NonModalNumber (" I",(arcCentreX - currentX) * scale, "0.0000")
+   post.NonModalNumber (" J",(arcCentreY - currentY) * scale, "0.0000")
+   post.Eol()
+end
+
+
+function CheckFeed()
+   if(feedRate == oldfeed) then return end
+--   nonmodalnumber (" F", feedrate * scale, "0.###")
+   oldfeed = feedRate
+   post.Eol()
+end
+
+function OnPenDown()
+   if (preheat > 0) then
+      post.Text (" G04 P")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end
+   if(toolClass == "LaserTool") then
+      post.Text(" M98 P")
+      post.Number(tool,"0")
+      post.Eol()
+   else if(tool >= 100 or toolClass == "MarkerTool") then
+         post.Text (" M04")
+      else
+         post.Text (" M98 P8119")
+      end
+   end
+   post.Eol()
+   if (pierceDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   if(toolClass == "LaserTool") then
+      post.Text(" M98 P9003\n G91 G0 Z")
+      post.Number(safeZ * scale, "0.0000")
+      post.Text("\n G90\n")
+   else if(tool >= 100 or toolClass == "MarkerTool") then
+         post.Text (" M05\n")
+      else
+         post.Text (" M98 P8011\n")
+      end
+   end
+
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+end
+
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

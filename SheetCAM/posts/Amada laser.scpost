@@ -1,0 +1,118 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Amada laser cutter post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--   created 03/03/08
+--   Based on Mach2 plasma.post
+
+
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text("O0001;\n")
+   post.Text ("(Filename: ", fileName, ");\n")
+   post.Text ("(Post processor: ", postName, ");\n")
+   post.Text ("(Date: ", date, ");\n")
+   if(scale == metric) then
+      post.Text ("G21 (Units: Metric);\n") --metric mode
+   else
+      post.Text ("G20 (Units: Inches);\n") --inch mode
+   end
+   post.Text ("G90 G40;\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   post.Text("G65 P9101 Z")
+   post.Number(safeZ * scale,"0.####");
+   post.Text(";\n")
+   post.Text("G93 X0Y0Z")
+   post.Number(materialThick * scale,"0.####");
+   post.Text(";\n")
+end
+
+
+
+function OnFinish()
+   post.Text ("M61;\nM30;\n")
+end
+
+function OnRapid()
+   if(endX > 1e10 or endY > 1e10) then return end
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText ("G00")
+   post.ModalNumber (" X", endX * scale, "0.####")
+   post.ModalNumber (" Y", endY * scale, "0.####")
+   post.Text(";\n")
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText ("G01")
+   post.ModalNumber ("X", endX * scale, "0.####")
+   post.ModalNumber ("Y", endY * scale, "0.####")
+   post.ModalNumber ("F", feedRate * scale, "0.###")
+   post.Text(";\n")
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText ("G03")
+   else
+      post.ModalText ("G02")
+   end
+   post.NonModalNumber ("X", endX * scale, "0.####")
+   post.NonModalNumber ("Y", endY * scale, "0.####")
+   post.ModalNumber ("Z", endZ * scale, "0.####")
+   post.Text ("I")
+   post.Number ((arcCentreX - currentX) * scale, "0.####")
+   post.Text ("J")
+   post.Number ((arcCentreY - currentY) * scale, "0.####")
+   post.ModalNumber ("F", feedRate * scale, "0.0###")
+   post.Text(";\n")
+end
+
+
+function OnPenDown()
+
+end
+
+
+function OnPenUp()
+   post.Text ("M61;\n")
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   post.Text (" M06 T")
+   post.Number (tool, "0")
+   post.ModalNumber(" F",feedRate * scale,"0.#")
+   post.Text ("  (", toolName, ")\n")
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

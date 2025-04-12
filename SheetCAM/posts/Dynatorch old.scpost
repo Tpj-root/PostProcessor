@@ -1,0 +1,174 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Dynatorch post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Designed for use with older Dynatorch machines having fully automatic thc\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("G23/G25 turn the plasma torch on/off\n")
+   ctrl:AppendText("M04/M05 turn the oxy-fuel torch on/off\n")
+   ctrl:AppendText("M60/M61 turn the plate marker on/off\n")
+   ctrl:AppendText("M08/M09 lower/raise the scriber\n")
+   ctrl:AppendText("Setting the feed and plunge rate to 0 disables feed rates\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+post.SetOptions(post.ARC_SEGMENTS)
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+-- revision 2/12/09
+-- Added plate marker
+
+
+function OnInit()
+   lineNumber = 10
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G90\n G17\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   oldfeed = -1
+   lasttoolClass = ""
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   if(toolClass ~= "PlasmaTool") then
+      post.Text(" G60\n") --Enable torch mode
+   end
+   post.Text (" G25\n M30\n")
+end
+
+function OnRapid()
+---text(currentx," ",currenty," ",endx," ",endy)
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   if(endX > 1e17 and endX > 1e17) then return end
+   CheckFeed()
+   post.Text (" G00")
+   if(endX < 1e17) then
+      post.NonModalNumber (" X", endX * scale, "0.0000")
+   end
+   if(endY < 1e17) then
+      post.NonModalNumber (" Y", endY * scale, "0.0000")
+   end
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   CheckFeed()
+   post.Text (" G01")
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnArc()
+   CheckFeed()
+   if(arcAngle <0) then
+      post.Text (" G03")
+   else
+      post.Text (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.NonModalNumber (" I",(arcCentreX - currentX) * scale, "0.0000")
+   post.NonModalNumber (" J",(arcCentreY - currentY) * scale, "0.0000")
+   post.Eol()
+end
+
+
+function CheckFeed()
+   if(feedRate == 0) then return end
+   if(feedRate == oldfeed) then return end
+   post.NonModalNumber (" F", feedRate * scale, "0.###")
+   oldfeed = feedRate
+   post.Eol()
+end
+
+function OnPenDown()
+   if (preheat > 0) then
+      post.Text (" G04 P")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end
+   if(toolClass == "MarkerTool") then
+      post.Text(" M08\n M60\n")
+   else
+      post.Text (" G23\n")
+   end
+   if (pierceDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   if(toolClass == "MarkerTool") then
+      post.Text(" M61\n M09\n")
+   else
+      post.Text (" G25\n")
+   end
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   if(toolClass == lasttoolClass) then return end
+   post.CancelModalNumbers()
+   if(toolClass == "MarkerTool") then
+      post.Text(" G541\n") --Enable scriber mode
+   end
+   if(toolClass == "PlasmaTool") then
+      post.Text(" G54\n") --Enable torch mode
+   end
+   if(toolClass == "FlameTool") then
+      post.Text(" G62\n") --Enable flame mode
+   end
+   lasttoolClass = toolClass
+end
+
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   if(toolClass == "MarkerTool") then
+      post.Text (" G04 P2.0\n")
+   end
+   OnPenUp()
+end
+

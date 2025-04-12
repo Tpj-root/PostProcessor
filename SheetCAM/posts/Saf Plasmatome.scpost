@@ -1,0 +1,149 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("SAF Plasmatome post processor\n")
+end
+
+
+post.ForceExtension("din")
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.TextDirect("%\n")
+   post.TextDirect("P001000\n")
+   
+   
+   post.TextDirect("N5 Q999990\n")
+   post.TextDirect("N10 G160 X1 Y1\n")
+   post.TextDirect("N15 G09\n")
+   post.TextDirect("N20 G90\n")
+   post.TextDirect("*N25 IF P197=1 GO 35\n")
+   post.TextDirect("N30 G92 X=P184 Y=P185\n")
+   post.TextDirect("*N35 P197=1\n")
+   post.TextDirect("N40 G186 K1 E1\n")
+   post.TextDirect("N45 G53\n")
+   post.TextDirect("*N50 IF P199>0 GO P199\n")
+   post.TextDirect("*N55 IF P198>0 GO P198\n")
+   post.TextDirect("N60 (*MSG, Part: Index:1 Row:1 Column:1)\n")
+   lineNumber = 65
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G71 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G70 (Units: Inches)\n") --inch mode
+   end
+   post.Text(" G90\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   firstCut = true
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0")
+   lineNumber = lineNumber + 5
+end
+
+
+function OnFinish()
+   post.Text (" G10\n")
+   post.Text (" (*MSG, End)\n")
+   post.TextDirect("*")
+   post.Text (" P199=0, P198=0, P197=0\n")
+   post.Text (" G39\n")
+   post.Text (" G72\n")
+   post.Text (" G53\n")
+   post.Text (" M41\n")
+   post.Text (" M30\n")
+end
+
+function OnRapid2()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   if(math.hypot(currentX - endX, currentY - endY) < 0.001) then return end
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+--   post.ModalNumber (" Z", endZ * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if firstCut then
+      firstCut = false
+      post.TextDirect("*")
+      post.Text(" P199=", lineNumber + 5, "\n")
+   end
+   post.TextDirect("*")
+   post.Text(" P198=", lineNumber + 5, "\n")
+   post.Text(" Q999991\n")
+   OnRapid2();
+   if (preheat > 0.001) then
+      post.Text (" G4 F")
+      post.Number (preheat * 1000,"0")
+      post.Eol()
+   end
+   post.Text (" M04")
+   if (pierceDelay > 0.001) then
+      post.Text (" G04 F")
+      post.Number (pierceDelay * 1000,"0")
+   end
+   post.Eol()
+end
+
+
+function OnPenUp()
+   post.Text (" M03")
+   if endDelay <= 0  then
+      endDelay = 0.02
+   end
+   post.Text (" G4 P")
+   post.Number (endDelay * 1000,"0")
+   post.Text("\n G4\n G4\n")
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnPenDown()
+   OnPenUp()
+end

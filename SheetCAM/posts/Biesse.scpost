@@ -1,0 +1,210 @@
+Function OnAbout(event)
+   Ctrl = event:GetTextCtrl()
+   Ctrl:AppendText("BIESSE 480/481 TESTED\n")
+   Ctrl:AppendText("MAX FILE SIZE 11K FOR OLDER MACHINES\n")
+   Ctrl:AppendText("DRAWING SHOULD BE UPSIDE DOWN IN Y !\n")
+     Ctrl:AppendText("number drills as 100, 101, 102 etc vertical only supported\n")
+   Ctrl:AppendText("diameter of drill numbers must match machine positions i.e.. If 6mm is drill 9 then tool 109 is 6mm\n")
+   Ctrl:AppendText("Non modal G-codes\n")
+   Ctrl:AppendText("Modal coordinates\n")
+   Ctrl:AppendText("No comments\n")
+   Ctrl:AppendText("Absolute IJ\n")
+   Ctrl:AppendText("G-codes used:\n")
+   Ctrl:AppendText("G0,G1,G2,G3,G71\n")
+   Ctrl:AppendText("M-codes used:\n")
+   Ctrl:AppendText("NONE\n")
+End
+ 
+ 
+ 
+ 
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+ 
+--   Created 05/04/2010 BY BRENDON with lots of help from les!
+--   based on MIN G CODE ABSOLUTE ARCS
+ 
+ 
+ 
+Function OnInit()
+   Post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+ 
+ 
+   Post.Text (" LX=")
+   Post.Number((materialX2 - materialX1) * scale,"0.00")
+   Post.Text(" LY=")
+   Post.Number((materialY2 - materialY1) * scale,"0.00")
+   Post.Text(" LZ=")
+   Post.Number(materialThick * scale,"0.00")
+   Post.Text(" HC1")
+   if(scale == metric) then
+      Post.Text (" G71\n") --metric mode
+   Else
+      Post.Text (" G70\n") --inch mode
+   End
+   Nolines=1
+   --post.Text (";EDIT PANEL SIZE BEFORE RUNNING!")
+   --post.Eol()
+    Post.Text (";EDIT OFFSETS BEFORE RUNNING!")
+    Post.Eol()
+    Nolines=nil
+   Post.Text (" XO=0 YO=0 ")
+   Post.Eol()
+--   text (" G40\n F1\n")
+   BigArcs = 1 --stitch arc segments together
+   MinArcSize = 0.05 --arcs smaller than this are converted to moves
+   SpindleDone = nil
+End
+ 
+Function OnNewLine()
+If nolines then return end
+   Post.Text ("N")
+   Post.Number (lineNumber, "0###")
+   LineNumber = lineNumber + 1
+End
+ 
+ 
+Function OnFinish()
+Post.Text (" X=PRK Y=PRK\n")
+   Nolines=1
+   Post.Text ("%\n")
+   Nolines=nil
+End
+ 
+Function OnRapid()
+If(toolType == 1) then return end
+ 
+   CheckSpindle()
+   Post.ModalText (" G0")
+   Post.ModalNumber (" X", endX * scale, "0.##")
+   Post.ModalNumber (" Y", endY * scale, "0.##")
+   Post.ModalNumber (" Z=(-LPZ)-", (endZ + toolOffset) * scale, "0.##")
+   Post.Eol()
+End
+ 
+Function OnMove()
+If(toolType == 1) then return end
+   Post.ModalText (" G1")
+   Post.ModalNumber (" X", endX * scale, "0.##")
+   Post.ModalNumber (" Y", endY * scale, "0.##")
+   Post.ModalNumber (" Z=(-LPZ)-", (endZ + toolOffset) * scale, "0.##")
+   Post.ModalNumber (" F", feedRate * scale / 1000, "0.0")
+   --post.ModalNumber (" S", spindleSpeed, "0.##")
+   Post.Eol()
+End
+ 
+Function OnArc()
+If(toolType == 1) then return end
+   CheckSpindle()
+   if(arcAngle <0) then
+      Post.ModalText (" G3")
+   Else
+      Post.ModalText (" G2")
+   End
+   Post.ModalNumber (" X", endX * scale, "0.##")
+   Post.ModalNumber (" Y", endY * scale, "0.##")
+   Post.ModalNumber (" Z=(-LPZ)-", (endZ + toolOffset) * scale, "0.##")
+   Post.Text (" I")
+   Post.Number (arcCentreX * scale, "0.##")
+   Post.Text (" J")
+   Post.Number (arcCentreY * scale, "0.##")
+   Post.ModalNumber (" F", feedRate * scale / 1000, "0.0")
+   --post.ModalNumber (" S", spindleSpeed, "0.##")
+   Post.Eol()
+End
+ 
+ 
+Function CheckSpindle()
+If(toolType == 1) then return end
+   If spindleDone then return end
+   if(endX >= 1e17 or endY >= 1e17) then return end
+   SpindleDone = true
+   Post.ModalNumber (" X", endX * scale, "0.##")
+   Post.ModalNumber (" Y", endY * scale, "0.##")
+   Post.Text(" Z=PRK PRF=-10 L=PON TP1 G40")
+   Post.ModalNumber (" F", feedRate * scale / 1000, "0.0")
+   Post.Eol()
+End
+ 
+Function OnSpindleCW()
+   SpindleDone = nil
+End
+ 
+Function OnSpindleCCW()
+If(toolType == 1) then return end
+   Post.Text (" M04")
+--   modalnumber (" S", spindlespeed, "0.##")
+   Post.Eol()
+End
+ 
+Function OnSpindleOff()
+If(toolType == 1) then return end
+   post.Text (" L=POFF\n")
+end
+ 
+ 
+function OnNewOperation()
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+ 
+function OnToolChange()
+if(toolType == 1) then return end
+   post.Text (" L=GC1 UT=")
+   post.Number (tool, "0")
+   post.Eol()
+end
+ 
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+ 
+function OnNewPart()
+end
+ 
+ 
+function OnFloodOn()
+--   post.Text(" M08\n")
+end
+ 
+function OnMistOn()
+--   post.Text(" M07\n")
+end
+ 
+function OnCoolantOff()
+--   post.Text(" M09\n")
+end
+ 
+function OnDrill()
+--example layout of post N100 X502.00 Y60.00 PRF=12.00 (-- makes plus) L=G99 T11
+ 
+   depth =   drillStart
+   depth = depth - drillPeck
+ 
+   while depth > drillZ do
+
+       post.ModalNumber (" X", endX * scale, "0.##")
+       post.ModalNumber (" Y", endY * scale, "0.##")
+      
+       post.NonModalNumber (" PRF=-", (depth + toolOffset) * scale, "0.##" )
+       post.Text (" L=G99 T")
+       post.Number (tool - 100, "#") 
+       post.Eol()
+      
+    depth = depth - drillPeck
+    end
+ 
+   post.ModalNumber (" X", endX * scale, "0.##")
+   post.ModalNumber (" Y", endY * scale, "0.##")  
+   post.NonModalNumber (" PRF=-", (drillZ + toolOffset) * scale, "0.##" )
+   post.Text (" L=G99 T")
+   post.Number (tool - 100, "#") 
+   post.Eol()
+  
+end

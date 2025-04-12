@@ -1,0 +1,115 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Camsoft plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("No comments\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("M03/M05 control plasma, M04/M05 control flame\n")
+end
+
+
+
+
+function OnInit()
+   post.Text("*\n")
+   lineNumber = 1
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   if(scale == metric) then
+      post.Text ("G21\n") --metric mode
+   else
+      post.Text ("G20\n") --inch mode
+   end
+   post.Text ("G90\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+end
+
+
+function OnFinish()
+   post.Text ("M05 M06 M20\n")
+   post.Text("M02\n")
+end
+
+function OnRapid()
+   if(endX > 1e17 or endY > 1e17) then return end
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.ModalText ("G00")
+   post.NonModalNumber (" X", endX * scale, "0.0##")
+   post.NonModalNumber (" Y", endY * scale, "0.0##")
+   post.NonModalNumber (" Z", -safeZ * scale, "0.0##")
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.ModalText ("G01")
+   post.NonModalNumber (" X", endX * scale, "0.0##")
+   post.NonModalNumber (" Y", endY * scale, "0.0##")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText ("G03")
+   else
+      post.ModalText ("G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0##")
+   post.NonModalNumber (" Y", endY * scale, "0.0##")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0##")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0##")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if (toolClass == PlasmaTool) then
+      post.Text ("M03\n")
+   else
+      post.Text ("M04\n")
+   end
+end
+
+
+function OnPenUp()
+  post.Text ("M05\n")
+end
+
+
+function OnNewOperation()
+--   post.Text (" (Operation: ", operationName, ")\n")
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   post.Text("T");
+   post.Number(tool,"0")
+   post.Eol()
+end
+
+function OnNewPart()
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

@@ -1,0 +1,182 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Purelogic post processor for Puremotion THC\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("Designed for use with Puremotion THC and macros\n")
+end
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G90 G91.1 G40\n F1\n")
+
+   post.Text (" M101\n")
+   post.Text (" G00")
+   post.ModalNumber (" Z", safeZ * scale, "0.0000")
+   post.Eol()
+
+   switchoffset = -0.08
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   
+   regState = true
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M05\n M30\n")
+end
+
+function OnRapid()
+   -- disable Z movement
+   if(math.hypot(endX-currentX , endY-currentY) < 0.001) then return end
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   if(math.hypot(endX-currentX , endY-currentY) < 0.001) then return end
+   RegControl()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   RegControl()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function RegControl()
+   if (leadinType ~= 0 and toolClass == "PlasmaTool") then
+      newRegState = false
+   else
+      newRegState = true
+   end
+   
+   if (newRegState ~= regState) then
+      regState = newRegState
+      if (newRegState == false) then
+         post.Text (" M103")
+      else
+         post.Text (" M104")
+      end
+      post.Eol()
+   end
+end
+
+
+function OnPenDown()
+   post.Text(" M100\n")
+   post.Text (" G00")
+   post.ModalNumber (" Z", pierceHeight * scale, "0.0000")
+   post.Eol()
+   post.Text(" M03\n")
+   if (pierceDelay > 0.001) then
+      post.Text (" G04 P")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+   post.Text (" G00")
+   post.ModalNumber (" Z", cutHeight * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+   
+   post.CancelModalNumbers()
+   post.ModalText ("")
+end
+
+
+function OnPenUp()
+   -- Move head Up to safety Z
+   post.Text (" M05\n")
+   post.Text (" G00")
+   post.ModalNumber (" Z", safeZ * scale, "0.0000")
+   post.Eol()
+   
+   post.CancelModalNumbers()
+   post.ModalText ("")
+   
+   regState = true
+end
+
+
+function OnNewOperation()
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+   post.CancelModalNumbers()
+   post.ModalText ("")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnNewPart()
+end
+
+function OnDrill()
+   OnRapid()
+  
+   post.Text(" M100\n")
+   post.Text (" G00")
+   post.ModalNumber (" Z", pierceHeight * scale, "0.0000")
+   post.Eol()
+   post.Text(" M03\n")
+   if (pierceDelay > 0.001) then
+      post.Text (" G04 P")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+   
+   post.CancelModalNumbers()
+   post.ModalText ("")
+   
+   -- Move head Up to safety Z
+   post.Text (" M05\n")
+   post.Text (" G00")
+   post.ModalNumber (" Z", safeZ * scale, "0.0000")
+   post.Eol()
+   
+   post.CancelModalNumbers()
+   post.ModalText ("")
+  
+   OnRapid()
+end

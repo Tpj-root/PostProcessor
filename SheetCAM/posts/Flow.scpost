@@ -1,0 +1,83 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("   Flow Waterjet post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("   Created 19/03/2007\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("   By Jeannette Heulin\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("   www.eblw.com\n")
+end
+
+
+function OnInit()
+   minArcSize = 0.05 -- arcs smaller than this are converted to moves
+   firstmove = true
+   moved = false
+end
+
+function OnFinish()
+   post.Number (endX * scale, "0.0000")
+   post.Text(",    ")
+   post.Number (endY * scale, "0.0000")
+   post.Text(",   0,  40,  0")
+   post.Eol()
+end
+
+function OnRapid()
+   if (firstmove == true) then
+      firstmove = false
+   else
+      if (moved == true) then
+         if (math.hypot(endX - currentX,  endY - currentY) > 0.001) then
+            post.Number (currentX * scale, "0.0000")
+            post.Text(",    ")
+            post.Number (currentY * scale, "0.0000")
+            post.Text(",   0,   0,   0")
+            post.Eol()
+         end
+      end
+   end
+end
+
+function OnMove()
+   if (firstmove == true) then
+      firstmove = false
+   else
+      if (math.hypot(endX - currentX,  endY - currentY) > 0.001) then
+         post.Number (currentX * scale, "0.0000")
+         post.Text(",    ")
+         post.Number (currentY * scale, "0.0000")
+         post.Text(",   0,  40,  0")
+         post.Eol()
+         moved = true
+      end
+   end
+end
+
+function OnArc()
+   if (firstmove == true) then
+      firstmove = false
+   else
+      if (math.hypot(endX - currentX,  endY - currentY) > 0.001) then
+          post.Number (currentX * scale, "0.0000")
+          post.Text(",    ")
+          post.Number (currentY * scale, "0.0000")
+          if(arcAngle <0) then
+             post.Text(",  -1")
+          else
+             post.Text(",   1")
+          end
+          post.Text(",  40,  0,    ")
+          post.Number (arcCentreX * scale, "0.0000")
+          post.Text(",    ")
+          post.Number (arcCentreY * scale, "0.0000")
+          post.Eol()
+          moved = true
+      end
+   end
+end
+
+function OnFileClosed()
+  Done = os.execute("start C:Progra~1/MakeOrd/MakeOrd.exe " .. filePath .. fileName)
+end

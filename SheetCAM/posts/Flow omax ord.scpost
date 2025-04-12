@@ -1,0 +1,63 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Flow systems post processor\n")
+   ctrl:AppendText("Uses Omax 'ord' file format\n")
+   
+end
+
+--   Created 23/4/2012
+
+post.ForceExtension("ord")
+post.SetOptions(post.ARC_SEGMENTS)
+
+function OnInit()
+   scale = inch
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   quality = 3
+   prevq = 0
+   prevX = 0
+   prevY = 0  
+end
+
+
+function CheckMove(bulge, qual)
+   post.Number (prevX * scale, "0.0000")
+   post.Text("\t")
+   post.Number (prevY * scale, "0.0000")
+   post.Text("\t")
+   post.Number (bulge, "0.0000")
+   post.Text("\t" .. qual .. "\n")
+   prevX = endX
+   prevY = endY
+end
+   
+function OnFinish()
+   CheckMove(0,0)
+end
+
+function OnRapid()
+   if(math.hypot (endX - currentX, endY - currentY) < 0.001) then return end
+   if(endX >= 1e10 or endY > 1e10) then return end
+   CheckMove(0,0)
+end
+
+function OnMove()
+   if(math.hypot (endX - currentX, endY - currentY) < 0.001) then return end
+   CheckMove(0, quality)
+end
+
+function OnArc()
+   if(math.hypot (endX - currentX, endY - currentY) < 0.001) then return end
+   bulge = math.tan(-arcAngle / 4)
+   CheckMove(bulge, quality)
+end
+
+function OnDrill()
+   tmpq = quality
+   quality = 5
+   endX = endX - 0.05
+   OnRapid()
+   endX = endX + 0.1
+   OnMove()
+   quality = tmpq
+end

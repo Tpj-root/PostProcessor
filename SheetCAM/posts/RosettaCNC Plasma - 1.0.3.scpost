@@ -1,0 +1,407 @@
+---
+--
+--    RosettaCNC RosettaCNC Plasma
+--    v1.0.3
+--    support@rosettacnc.com
+--
+---
+
+--
+-- USER SETTINGS
+--
+-- lineNumberEnabled
+--    enable line numbers in g-code output:
+--    false    Line numbers are disabled
+--    true     Line numbers are enabled
+lineNumbersEnabled = false
+
+-- torchTHCEnabled
+--    enable management of THC (M17 THC ON | M18 THC OFF):
+--    false    THC management disabled.
+--    true     THC management enabled.
+torchTHCEnabled = true
+
+-- torchArcOkInput
+--    enable management of THC Torch Arc Ok input:
+--    0        THC Torch Arc Ok signal will not be checked.
+--    1..32    The CNC digital input which recive THC Arc Ok signal.
+torchArcOkInput = 5
+
+-- torchArcOkTimeout
+--    define the time out after while if THC Torch Arc Ok signal is not ON
+--    a error message will be showed and program stopped:
+--    0        None timeout check is enabled and if signal is not ON CNC goes in error.
+--    >0       Timeout check in seconds after while if signal is not ON CNC goes in error.
+torchArcOkTimeout = 3.5
+
+-- torchTouchEnabled
+--    enable touch height magagement (reference)
+--    false    Touch height management disabled
+--    true     Touch height management enabled
+torchTouchEnabled = true
+
+-- torchTouchMovement
+--    define the down movement during touch measure, e.g -100
+torchTouchMovement = -20
+
+-- torchTouchMovementFeed
+--    define the feed of touch movment, e.g 200 to get F200
+torchTouchMovementFeed = 200
+
+-- touchTouchMinimumDistance
+--    define the minimum coord distance beetween touch movements to reduce number of touches
+--    0        Disabled
+--    >0       Enabled
+touchTorchMinimumDistance = 50
+
+--
+--- SHEECAM ABOUT PART
+--
+--
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("RosettaCNC Plasma post - v1.0.3\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Post processors parameters:\n")
+   ctrl:AppendText("  lineNumbersEnabled:  Define if g-code has line numbers.\n")
+   ctrl:AppendText("  torchTHCEnabled:  Define if use THC.\n")
+   ctrl:AppendText("  torchArcOkInput:  Define THC Arc Ok Input.\n")
+   ctrl:AppendText("  torchArcOkTimeout:  Define THC Arc Ok Timeout.\n")
+   ctrl:AppendText("\n")
+   if (lineNumbersEnabled == false) then
+      ctrl:AppendText("- Line numbers: DISABLED\n")
+   else
+      ctrl:AppendText("- Line numbers: ENABLED\n")
+   end
+   if (torchTHCEnabled == false) then
+      ctrl:AppendText("- THC control: DISABLED\n")
+   else
+      ctrl:AppendText("- THC control: ENABLED\n")
+   end
+   if (torchArcOkInput) then
+      ctrl:AppendText("- THC Torch Arc Ok Input: ENABLED on input " .. torchArcOkInput .. "\n")
+      if (torchArcOkTimeout > 0) then
+         ctrl:AppendText("- THC Torch Arc Ok Timeout: ENABLED at " .. torchArcOkTimeout .. " s\n")
+      end
+   else
+      ctrl:AppendText(- "THC Torch Arc Ok Input: DISABLED\n")
+   end
+end
+
+--
+--- SHEECAM POST PART
+--
+--
+post.ForceExtension("ngc")
+
+firstPierceTime = 0  --this is an extra delay added to the first pierce as needed by some machines
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+
+   post.Text ("( ==                            == )\n");
+   post.Text ("( ==   Created for RosettaCNC   == )\n");
+   post.Text ("( ==    by SHEETCAM  v6.1.71    == )\n");
+   post.Text ("( ==                            == )\n");
+   post.Text ("( ==   3 Axis Plasma - v1.0.3   == )\n");
+   post.Text ("( ==                            == )\n");
+   post.TextDirect ("\n");
+   post.Text ("; POST: ", postName, "\n")
+   post.Text ("; DATE: ", date, "\n")
+   post.TextDirect ("\n");
+   post.Text (" ( PREAMBLE )\n")
+   if (scale == metric) then
+      post.Text (" G17 G21 G40 G49 G80 G90 G91.1\n")
+   else
+      post.Text (" G17 G20 G40 G49 G80 G90 G91.1\n")
+   end
+   post.Text (" F1 S500\n")
+
+   bigArcs = 1       --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+
+   firstPierce = firstPierceTime;
+end
+
+function OnNewLine()
+    if (lineNumbersEnabled == true) then
+        post.Text ("N")
+        post.Number (lineNumber, "0000")
+        lineNumber = lineNumber + 10
+    end     
+end
+
+function OnFinish()
+   post.TextDirect ("\n");
+   post.Text (" ( EPILOGUE )\n")
+   TorchOFF();
+   post.Text ("M02\n")
+end
+
+function OnRapid()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", endZ * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", endZ * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   if (arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", endZ * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnPenDown()
+   if (preheat > 0.001) then
+      post.ModalText (" G00")
+      post.ModalNumber (" Z", cutHeight * scale, "0.0000")
+      post.Text ("\n G04 P")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end
+   TorchON();
+end
+
+function OnPenUp()
+   TorchOFF();
+end
+
+function OnNewOperation()
+   post.Text (" ; OPER: ", operationName, "\n")
+   post.TextDirect ("\n");
+end
+
+function OnComment()
+  post.Text ("; ",commentText,"\n")
+end
+
+function OnToolChange()
+   post.Text ("\n ; TOOL: ", toolName, "\n")
+   post.Text (" M06 T")
+   post.Number (tool, "0")
+   post.Eol()
+   post.ModalNumber (" F", feedRate * scale,"0.0###")
+   if (plungeRate <= 0) then
+      post.Warning ("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning ("WARNING: Feed rate is zero")
+   end
+end
+
+function OnNewPart()
+   post.TextDirect ("\n");
+   post.Text (" ; PART: ",partName,"\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end
+
+--
+--- RosettaCNC PLASMA SPECIFIC CODE
+--
+--
+torchState = false      -- torch state
+touchDone = false       -- touch done state (local code only)
+touchLastPosX = 0       -- latest touch X position (local code only)
+touchLastPosY = 0       -- latest touch Y position (local code only)
+
+executeInMacro = true   -- enable torch management in macro (simplity readability)
+commentsEnabled = false -- enable comments on torch ON/OFF events
+
+debugEnabled = false    -- enable debug log
+
+function TorchON()
+   torchState = true
+   if (executeInMacro == true) then
+      --
+      --- Torch ON code in external macro
+      --
+      --    Conventions of input parameters
+      --
+      --    Xx             compulsory parameter
+      --    [Xx]           optional parameter
+      --	   (Xx|Yy|Zz)?	   one of compulsory paramaters
+      --    [Xx|Yy|Zz]*    zero or more optionals parameters
+      --    [Xx|Yy|Zz]+    at least one or more optionals parameters
+      --	   M!			      compulsory parameter don't take care of passed value
+      --	   [M!]		      optional parameter don't take care of passed value
+      --    M[1|2]?        compulsory parameter with one of listed values (Eg: M1 or M2)
+      --    [M[1|2]?]      optional parameter with one of listed values (Eg: M1 or M2)
+      --
+      --    G65 P6000 [Dd] [Ii] [Jj] T[0|1]? Zz A0
+      --
+      --    G65 P6000 [Dd] [Ii] [Jj] T[0|1]? Zz A1 [Kk] [Ff] [Mm]
+      --
+      --    Dd	   #7    Pierce delay [s].
+      --    Ii	   #4		Torch arc ok input.
+      --    Jj	   #5		Torch arc ok input timeout [s].
+      --    Tt	   #20	Torch THC enabled (0 = disabled | 1 = enabled).
+      --    Zz    #26   Pierce Height.
+      -- 	Aa	   #1		Torch touch enabled (0 = disabled | 1 = enabled).
+      --    Kk	   #6		Torch touch movement.
+      --    Ff    #9		Torch touch movement feed.
+      --    Mm	   #13	Torch touch minimum distance.
+      --
+      post.Text ("\n G65 P6000")
+      if (pierceDelay > 0.001) then
+         post.Text (" D")
+         post.Number (pierceDelay + firstPierce,"0.###")
+         firstPierce = 0
+      end
+      if (torchArcOkInput > 0) then
+         post.Text(" I", torchArcOkInput)
+         if (torchArcOkTimeout > 0) then
+            post.Text (" J", torchArcOkTimeout)
+         end
+      end
+      if (torchTHCEnabled == true) then
+         post.Text (" T1")
+      else
+         post.Text (" T0")
+      end;
+      post.Text (" Z")
+      post.Number (pierceHeight * scale, "0.0000")
+      if (torchTouchEnabled == true) then
+         post.Text (" A1")
+         post.Text (" K")
+         post.Number (torchTouchMovement * scale, "0.0000")
+         post.Text (" F")
+         post.Number (torchTouchMovementFeed * scale, "0.0###")
+         post.Text (" M")
+         post.Number (touchTorchMinimumDistance * scale, "0.0000")
+      else
+         post.Text (" A0")
+      end
+      post.Eol()
+   else
+      -- Torch ON code in local
+      if (torchTouchEnabled == false) then
+         post.ModalText (" G00")
+         post.ModalNumber (" Z", pierceHeight * scale, "0.0000")
+      else
+         doTouch = false
+         if (touchDone == false) then
+            doTouch = true
+         else
+            local len = math.hypot(touchLastPosX - currentX , touchLastPosY - currentY)
+            doTouch = (len >= touchTorchMinimumDistance)
+            Debug("len=", len, " doTouch=", doTouch)
+         end
+         if (doTouch == false) then
+            post.ModalText (" G53 G00")
+            post.ModalText (" Z#<_plasma.touch.z_>\n")
+         else
+            touchDone = true
+            touchLastPosX = currentX
+            touchLastPosY = currentY
+            post.Text (" M109 P\"Probing for Reference...\" Q4\n")
+            post.Text (" G00 Z0\n")
+            post.Text (" G38.2 Z", torchTouchMovement, " F", torchTouchMovementFeed, "\n")
+            post.Text (" #<_plasma.touch.z_>=[#5713+", pierceHeight, "]\n")
+            post.Text (" M109 P\"\" Q4\n")
+            post.Text (" G53 G00 Z#<_plasma.touch.z_>\n")
+            post.Text (" F", feedRate, "\n")
+         end
+      end
+      post.Text (" M03")
+      AppendComment("torch ON")
+      post.Eol()
+      if (pierceDelay > 0) then
+         post.Text (" G04 P")
+         post.Number (pierceDelay + firstPierce,"0.###")
+         post.Eol()
+         firstPierce = 0
+      end
+      if (torchArcOkInput > 0) then
+         post.Text (" M66 P", torchArcOkInput, " L11 Q", torchArcOkTimeout, "\n")
+      end
+      if (torchTHCEnabled == true) then
+         post.Text (" M17\n")
+      end
+   end
+end
+
+function TorchOFF()
+   if (torchState == false) then return end
+   torchState = false
+   if (executeInMacro == true) then
+      -- Torch OFF code in external macro
+      post.Text (" G65 P6001")
+      if (endDelay > 0) then
+         post.Text (" E")
+         post.Number (endDelay,"0.###")
+      end
+      if (torchTHCEnabled == true) then
+         post.Text (" T1")
+      end;
+      AppendComment("torch OFF")
+      post.Eol()
+   else
+      -- Torch OFF code local
+      post.Text (" M05")
+      AppendComment("torch OFF")
+      post.Eol()
+      if (endDelay > 0) then
+         post.Text (" G04 P")
+         post.Number (endDelay,"0.###")
+         AppendComment("pause at end of cut")
+         post.Eol()
+      end
+      if (torchTHCEnabled == true) then
+         post.Text (" M18")
+         AppendComment("THC OFF")
+         post.Eol()
+      end
+   end
+end
+
+--
+--- ROSETTACNC UTILS
+--
+--
+function AppendComment(...)
+   if (commentsEnabled == false) then return end
+   s = ""
+   for i, v in ipairs(arg) do
+      s = s .. tostring(v)
+   end
+   post.Text("  ; ", s)
+end;
+
+function Debug(...)
+   if (debugEnabled == false) then return end
+   s = ""
+   for i, v in ipairs(arg) do
+      s = s .. tostring(v)
+   end
+   post.Text("\n ; DEBUG: ", s, "\n")
+end

@@ -1,0 +1,135 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("StartDrill post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Special post designed to drill the start points for flame/plasma cutting\n")
+   ctrl:AppendText("Define your cut path as normal then use this post to create the code for drilling. \n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Post variables:\n")
+   ctrl:AppendText("peckDepth - to control the peck depth\n")
+   ctrl:AppendText("drillFeed - drilling feed rate \n")
+end
+
+
+
+--  revision 3/2/07 
+--  Removed final safety move. This is now done in SheetCam
+
+--   created 3/10/04
+--   Based on Plasma1.post
+
+
+post.DefineCustomOption("Peck depth","drillpeck",sc.unitLINEAR,0,500)
+post.DefineCustomOption("Feed rate","drillfeed",sc.unitFEED,0,50000)
+drillpeck = 10
+drillfeed = 200
+
+function OnInit()
+   post.ShowCustomOptions("Drilling parameters")
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G53\n G90\n G40\n F1\n")
+   drillfeed = 80
+   post.Text (" M03\n")
+   drilldepth = materialThick
+   drillRetract = 1000
+   drillPeck = materialThick + 10
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M05\n M30\n")
+end
+
+function OnRapid()
+end
+
+function rapid2()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", endZ * scale, "0.0000")
+   post.Eol()
+end
+
+
+function OnMove()
+
+end
+
+function OnArc()
+
+end
+
+
+function OnPenDown()
+   endZ = safeZ
+   rapid2()
+   post.ModalNumber("\n F",drillfeed * scale,"0.#")
+   post.Eol()
+   depth = materialTop
+   drillZ = - drilldepth
+   while depth > drillZ do
+      endZ = depth + .5
+      rapid2()
+      depth = depth - drillpeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+
+      post.ModalText (" G01")
+      post.ModalNumber (" Z", endZ * scale, "0.0000")
+      post.Eol()
+
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         rapid2()
+      end
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      rapid2()
+   end
+
+end
+
+
+function OnPenUp()
+
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnSetFeed()
+end
+
+
+function OnToolChange()
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+end

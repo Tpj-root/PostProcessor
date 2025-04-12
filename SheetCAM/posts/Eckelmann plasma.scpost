@@ -1,0 +1,133 @@
+--this is the distance between each torch reference in MILLIMETRES
+refDistance = 300
+
+
+post.ForceExtension("din")
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Eckelmann plasma post processor\n")
+   ctrl:AppendText("\n")
+end
+
+
+function OnInit()
+   post.Text("%1\n")
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text ("(", fileName, ")\n")
+   post.Text ("(Post processor: ", postName, ")\n")
+   post.Text ("(Date: ", date, ")\n")
+   post.Text ("G90\n")
+   post.Text ("P1200=1\n")
+   post.Text ("P1201=1\n")
+   post.Text ("G22 L9800\n")
+   post.Text ("G1 F=P1501\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   firstPierce = firstPierceTime;
+   dist = 9999999
+end
+
+
+
+function OnFinish()
+   post.Text ("G99\n")
+end
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   local len = math.hypot(endX - currentX , endY - currentY)
+   dist = dist + len
+   post.Text ("G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   local len = math.hypot(endX - currentX , endY - currentY)
+   dist = dist + len
+   post.Text ("G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+--   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   local radius = math.hypot(currentX - arcCentreX, currentY - arcCentreY)
+   dist = dist + radius * math.abs(arcAngle)
+   if(arcAngle <0) then
+      post.Text ("G03")
+   else
+      post.Text ("G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+--   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   post.Text("G61\n")
+   if(dist > refDistance) then
+      post.Text("M80\n")
+   end
+   post.Text ("M14 (Start Cutting)\n")
+   if(dist > refDistance) then
+      post.Text("M81\n")
+      dist = 0
+   end
+
+
+--[[   if (pierceDelay > 0.001) then
+      post.Text (" G04 P")
+      post.Number (pierceDelay + firstPierce,"0.###")
+      firstPierce = 0
+      post.Eol()
+   end]]
+end
+
+
+function OnPenUp()
+   post.Text ("M15 (End Cutting)\n")
+--[[   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end]]
+end
+
+
+function OnNewOperation()
+   post.Text ("(Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text("(",commentText,")\n")
+end
+
+function OnToolChange()
+
+end
+
+function OnNewPart()
+   post.Text("M514 (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

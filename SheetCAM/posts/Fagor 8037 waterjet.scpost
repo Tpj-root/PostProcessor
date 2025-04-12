@@ -1,0 +1,140 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Waterjet post for Fagor 8037\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental code\n")
+end
+
+post.ForceExtension("pim")
+
+
+
+function OnInit()
+   line= 1
+   nolines = true
+   post.Text ("%")
+   post.Text(fileNameOnly)
+   post.Text(",MX,")
+   post.Eol()
+   nolines = false
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+
+   post.Text (" G90\n")
+   if(scale == metric) then
+      post.Text (" G71\n") --metric mode
+   else
+      post.Text (" G70\n") --inch mode
+   end
+   post.Text(" G51E0.2\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   if nolines then return end
+   post.Text("N")
+   post.Number(line,"0000")
+   line = line + 10
+end
+
+function OnFinish()
+   post.Text(" G0 X0 Y0\n M02\n")
+end
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.0001) then return end
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.0001) then return end
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+--[[   post.Text (" (", toolName, ")\n")
+   post.Text (" T")
+   post.Number (tool, "00")
+   post.Text(".")
+   post.Number (tool, "00")
+   post.Text(" M6\n")
+   post.Text (" G43 T")
+   post.Number (tool, "00")
+   post.Text(".")
+   post.Number (tool, "00")
+   post.Eol()]]
+end
+
+
+function OnNewPart()
+end
+
+
+function OnPenDown()
+   if (preheat > 0.001) then
+      post.ModalText (" G00")
+      post.ModalNumber (" Z", cutHeight * scale, "0.0000")
+      post.Text ("\n G04 K")
+      post.Number (preheat * 100,"0")
+      post.Eol()
+   end
+   post.Text (" M45\n")
+   if (pierceDelay > 0.001) then
+      post.Text (" G04 K")
+      post.Number (pierceDelay * 100,"0")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   post.Text (" M66\n")
+   if (endDelay > 0) then
+      post.Text (" G04 K")
+      post.Number (endDelay * 100,"0")
+      post.Eol()
+   end
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

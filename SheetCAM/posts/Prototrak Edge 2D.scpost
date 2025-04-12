@@ -1,0 +1,160 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Prototrak edge 2D processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Uses Prototrak conversational code with only X and Y moves\n")
+end
+
+
+
+--   Created 21/11/2007
+
+post.ForceExtension("MX2")
+
+function OnInit()
+   nolines = 1
+   lineNumber = 1
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text("PN0000000 ")
+   if(scale == metric) then
+      post.Text (" G21;\n") --metric mode
+      format = "0.00"
+      digitMul = 100
+   else
+      post.Text (" G20;\n") --inch mode
+      format = "0.0000"
+      digitMul = 10000
+   end
+   nolines = nil
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   wasrapid = 1
+   curFeed =0
+   needcr = false;
+end
+
+function OnNewLine()
+   if nolines then return end
+   post.Text ("N")
+   post.Number (lineNumber, "0")
+   lineNumber = lineNumber + 1
+end
+
+
+function OnFinish()
+   CheckCr(true)
+   nolines = 1
+   post.Text("%\n")
+end
+
+function CheckCr(rapid)
+   if not needcr  then return end
+   post.NonModalNumber(" D", toolDia * scale, format)
+   if(rapid) then
+      post.Text(" CR-")
+   else
+      post.NonModalNumber(" CR",0,format)
+   end
+   post.NonModalNumber(" T",tool,"00")
+   post.Text(";\n")
+   needcr = false
+end
+
+function OnRapid()
+   CheckCr(true)
+   wasrapid = 1
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   CheckCr(false)
+   post.Text (" G101")
+   donumber (" XB", currentX * scale)
+   donumber (" YB", currentY * scale)
+   donumber (" XE", endX * scale)
+   donumber (" YE", endY * scale)
+   post.Text(" TC0")
+   post.NonModalNumber(" F",curFeed * scale,"0.0")
+   needcr = true
+end
+
+function OnArc()
+   if(endX == currentX and endY == currentY) then --circle
+      CheckCr(true)
+      post.Text(" G109")
+      donumber (" XC", arcCentreX * scale)
+      donumber (" YC", arcCentreY * scale)
+      donumber (" R", math.hypot(endX - arcCentreX, endY - arcCentreY) * scale)
+      if(arcAngle <0) then
+         post.Text (" DR2")
+      else
+         post.Text (" DR1")
+      end
+      post.Text(" TC0 FC0.0")
+      post.NonModalNumber(" F",curFeed * scale,"0.0")
+      post.NonModalNumber(" T",tool,"00")
+      post.NonModalNumber(" D", toolDia * scale, format)
+      post.Text(";\n")
+      return
+   end
+   CheckCr(false)
+   if(arcAngle <0) then
+      post.Text (" G103")
+   else
+      post.Text (" G102")
+   end
+   donumber (" XB", currentX * scale)
+   donumber (" YB", currentY * scale)
+   donumber (" XE", endX * scale)
+   donumber (" YE", endY * scale)
+   donumber (" XC", arcCentreX * scale)
+   donumber (" YC", arcCentreY * scale)
+   post.Text(" TC0")
+   post.NonModalNumber(" F",curFeed * scale,"0.0")
+   needcr = true
+end
+
+function donumber(txt,num)
+   post.Text(txt)
+   if(num >= 0) then
+      post.Text("+")
+   end
+   num = math.toint(num * digitMul)/digitMul
+   post.Number(num,format)
+   post.Text("A")
+end
+
+
+function OnNewOperation()
+   curFeed = feedRate
+end
+
+function OnComment()
+end
+
+function OnToolChange()
+
+end
+
+function OnDrill()
+   CheckCr(true)
+   post.Text (" G100")
+   donumber (" X", endX * scale)
+   donumber (" Y", endY * scale)
+   post.NonModalNumber(" T",tool,"00")
+   post.NonModalNumber(" D", toolDia * scale ,format)
+   post.Text(";\n")
+end
+
+function OnSetFeed()
+end
+
+
+function OnAutoTap()
+   OnDrill()
+end
+
+function OnRigidTap()
+   OnDrill()
+end
+

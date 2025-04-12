@@ -1,0 +1,219 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Mecanumeric HPGL style code\n")
+   ctrl:AppendText(" \n")
+   ctrl:AppendText("Outputs a 3D version of HPGL\n")
+end
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   created 10/04/06
+
+rapidFeed = 15000
+rapidPlunge = 10000
+post.ForceExtension("CNC")
+post.SetOptions(post.ARC_SEGMENTS)
+
+function OnInit()
+   scale = 125
+   zScale = 200
+   post.Text("\nZ\nA\nH2000,")
+   post.Number(safeZ * zScale, 0)
+   post.Eol()
+   arcscale = -57.2957795130
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   lastFeed = -1
+   lastPlunge = -1
+   rel = {}
+   firstRapid = true
+end
+
+function OnFinish()
+   endZ = safeZ
+   OnRapid()
+   endX = 0
+   endY = 0
+   OnRapid()
+   post.Text("S\nK\n")
+end
+
+function OnSpindleSpeed()
+   post.Text("B")
+   post.Number(spindleSpeed, "0")
+   post.Eol()
+end
+
+function CheckFeed(feed)
+   if feed == lastFeed then return end
+   post.NonModalNumber("V",feed, "0");
+   post.Eol();
+   lastFeed = feed
+end
+
+function CheckPlunge(plunge)
+   if lastPlunge ~= plunge then
+      lastPlunge = plunge
+      post.Text("G0,")
+      post.Number(plunge, "0")
+      post.Eol()
+   end
+end
+
+function DoAxis(axis, value)
+   if not rel[axis] then
+      rel[axis] = 0;
+   end
+   local r = rel[axis]
+   local d = value - r
+   if(d < 0) then
+      d = math.toint(-d + 0.5)
+      if d~= 0 then
+         post.Text("-")
+         rel[axis] = r - post.Number(d, "0")
+      else
+         post.Text("0")
+      end
+   else
+      d = math.toint(d + 0.5)
+      if d~= 0 then
+         rel[axis] = r + post.Number(d, "0")
+      else
+         post.Text("0")
+      end
+   end
+--   post.Text("(" .. value .. ",".. rel[axis] .. ")")
+end
+
+function OnRapid()
+   if endX >= 1e17 then
+      endX = currentX
+      if(endX > 1e17) then return end
+   end
+   if endY >= 1e17 then
+      endY = currentY
+      if(endY > 1e17) then return end
+   end
+   if(endZ < currentZ) then
+      CheckPlunge(rapidPlunge)
+   end
+   post.Text("U")
+   DoAxis(1, endX * scale)
+   post.Text(",")
+   DoAxis(2, endY * scale)
+   if firstRapid then
+      rel[3] = math.toint((materialTop * zScale) + 0.5)
+      firstRapid = false
+   else
+      post.Text(",")
+      DoAxis(3, endZ * zScale)
+   end
+   post.Eol()
+end
+
+function OnMove()
+   if(endZ < currentZ) then
+      CheckPlunge(plungeRate)
+   end
+   CheckFeed(feedRate)
+   post.Text("D")
+   DoAxis(1, endX * scale)
+   post.Text(",")
+   DoAxis(2, endY * scale)
+   post.Text(",")
+   DoAxis(3, endZ * zScale)
+   post.Text("\n")
+end
+
+function OnArc()
+   CheckFeed(feedRate)
+   if(endZ ~= currentZ) then
+      post.ArcAsMoves(0.02)
+      return
+   end
+   post.Text("C");
+   DoAxis(1, endX * scale)
+   post.Text(",")
+   DoAxis(2, endY * scale)
+   post.Text(",")
+   post.Number ( (arcCentreX - currentX) * scale, "0")
+   post.Text(",")
+   post.Number ( (arcCentreY - currentY) * scale, "0")
+   if(arcAngle < 0) then
+      post.Text(",1\n")
+   else
+      post.Text(",-1\n")
+   end
+end
+
+function OnSpindleCW()
+   post.Text("M\n")
+end
+
+function OnSpindleCCW()
+   post.Text("M\n")
+end
+
+function OnSpindleOff()
+   post.Text("N\n")
+end
+
+
+function OnNewOperation()
+end
+
+function OnToolChange()
+   post.Text("T")
+   post.Number (tool,"0")
+   post.Text("\n")
+end
+
+function OnSpindleChanged()
+   post.NonModalNumber("B", spindleSpeed, "0");
+   post.Eol();
+end
+
+function OnNewPart()
+end
+
+
+function OnFloodOn()
+end
+
+function OnMistOn()
+end
+
+function OnCoolantOff()
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = 0.5
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+  end
+   while depth > drillZ do
+      endZ = depth + buffer
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end

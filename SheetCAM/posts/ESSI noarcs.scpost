@@ -1,0 +1,109 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("ESSI (ISO 6582) post with arcs converted to line segments\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Codes 53/54 turn plasma on/off\n")
+   ctrl:AppendText("Codes 7/8 turn flame on/off\n")
+   ctrl:AppendText("Codes 9/10 turn punch marker on/off\n")
+end
+
+
+--   Created 30/6/2006
+
+
+
+function OnInit()
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   curx =0
+   cury =0
+   firstmove = 1
+   scale = scale * 100
+   post.Text("81\n38\n")
+end
+
+
+function OnFinish()
+   OnPenUp()
+   endX = 0
+   endY = 0
+   OnRapid()
+   post.Text("63\n0\n")
+end
+
+function OnRapid()
+   if(firstmove == 1) then
+      firstmove=0
+      return
+   end
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText("5\n");
+   doxy()
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText("6\n");
+   doxy()
+   post.Eol()
+end
+
+function doxy()
+   local tmpX
+   local tmpY
+   tmpX = 0
+   tmpY = 0
+   if(endX < 1e10) then
+       tmpX = (endX * scale) - curx
+       tmpX = math.toint(tmpX)
+       curx = curx + tmpX
+   end
+   if(endY < 1e10) then
+       tmpY = (endY * scale) - cury
+       tmpY = math.toint(tmpY)
+       cury = cury + tmpY
+   end
+   if(tmpX ==0 and tmpY == 0) then return end
+   donumber(tmpX)
+   donumber(tmpY)
+   
+end
+
+function OnArc()
+   post.ArcAsMoves(0.1)
+end
+
+function donumber(num)
+   num = math.toint(num)
+   if(num == 0) then
+      post.Text("+0");
+   else
+      post.Number(num,"+0");
+   end
+end
+
+function OnPenDown()
+   post.ModalText("6\n");
+   if(toolType == 7 or toolClass == "FlameTool") then --flame
+      post.Text("7\n"); --flame
+   else if(toolClass == "MarkerTool") then
+      post.Text("9\n")
+      else
+         post.Text("53\n"); --plasma
+      end
+   end
+end
+
+function OnPenUp()
+   if(toolType == 7 or toolClass == "FlameTool") then --flame
+      post.Text("8\n"); --flame
+   else if(toolClass == "MarkerTool") then
+      post.Text("10\n")
+      else
+         post.Text("54\n"); --plasma
+      end
+   end
+end
+
+

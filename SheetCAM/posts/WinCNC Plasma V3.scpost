@@ -1,0 +1,144 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("WinCNC plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("WinCNC + Practical CNC post\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Comments enclosed with [ and ]\n")
+   ctrl:AppendText("Torch on/off is controlled by the WinCNC controller\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   revision 7/10/05
+--   Added new arc handling
+
+--   created 25/10/04
+--   Based on Plasma1.post
+
+
+
+function OnInit()
+
+   post.SetCommentChars ("[]", "<>")  --make sure [ and ] characters do not appear in system text
+   post.Text ("[Filename: ", fileName, "]\n")
+   post.Text ("[Post processor: ", postName, "]\n")
+   post.Text ("[Date: ", date, "]\n")
+   if(scale == metric) then
+      post.Text ("G22 [Units: Metric]\n") --metric mode
+   else
+      post.Text ("G20 [Units: Inches]\n") --inch mode
+   end
+   post.Text ("G53\nG90\nG9 S10\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+end
+
+
+function OnFinish()
+--   text ("M30\n")
+end
+
+function OnRapid()
+   post.Text ("G0")
+   post.ModalNumber (" X", endX * scale, "0.####")
+   post.ModalNumber (" Y", endY * scale, "0.####")
+   post.ModalNumber (" Z", endZ * scale, "0.####")
+   post.Eol()
+end
+
+function OnMove()
+   post.Text ("G1")
+   post.ModalNumber (" X", endX * scale, "0.####")
+   post.ModalNumber (" Y", endY * scale, "0.####")
+   post.ModalNumber (" Z", endZ * scale, "0.####")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text ("G3")
+   else
+      post.Text ("G2")
+   end
+   post.ModalNumber (" X", endX * scale, "0.####")
+   post.ModalNumber (" Y", endY * scale, "0.####")
+   post.ModalNumber (" Z", endZ * scale, "0.####")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.####")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.####")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   post.Text ("G0")
+   post.ModalNumber (" Z", (pierceHeight) * scale, "0.####")
+   if (preheat > 0.05) then
+      post.Text ("\nG4 X")
+      post.Number (preheat,"0.###")
+   end
+   if (pierceDelay > 0.05) then
+      post.Text ("\nG1")
+      post.ModalNumber (" X", (currentX + 0.1) * scale, "0.####") -- small G1 move to turn on the torch
+      post.Text ("\nG4 X")
+      post.Number (pierceDelay,"0.###")
+   end
+   post.Eol()
+end
+
+
+function OnPenUp()
+--   text ("M5\n")
+   if (endDelay > 0.05) then
+      post.Text ("G0")
+      post.ModalNumber (" Z", (endZ + 0.1) * scale, "0.####") --lift slightly to turn off torch
+      post.Text ("\nG4 X")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+function OnNewOperation()
+   post.Text (" [Operation: ", operationName, "]\n")
+end
+
+function OnComment()
+  post.Text(" [",commentText,"]\n")
+end
+
+function OnSpindleChanged()
+
+end
+
+function OnToolChange()
+--   text ("M6 T")
+--   number (tool, "0")
+--   text (" [", toolname, "]\n")
+end
+
+function OnNewPart()
+   post.Text("[Part: ",partName,"]\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

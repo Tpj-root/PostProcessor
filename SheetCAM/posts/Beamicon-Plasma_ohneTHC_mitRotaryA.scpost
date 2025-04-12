@@ -1,0 +1,166 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Beamicon Plasma post processor\n")
+   ctrl:AppendText(" no THC, with rotary axis A\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("The torch is referenced (G79) at cut start only\n")
+end
+
+
+--   revision 4-feb-2017 N. Benezan
+--   Based on plasma_THC300.post
+
+-- Rapids will move the shortest distance to the next cut but may cause machines with limited rotation
+-- to 'wind up'. Set this to 0 to disable optimisation.
+--defaults to 1 if not defined
+optimiseRapids = 0
+
+--Number of units for one full revolution of the rotary axis
+unitsPerRev=360
+
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   post.Text (" P1=X P2=Y\n")
+   post.Text (" G53\n")
+   post.Text (" L0\n")
+   post.Text (" L54 R1=X-P1 R2=Y-P2\n") -- Nullpunkt auf aktuelle Position setzen
+   post.Text (" G54\n")
+   post.Text (" G0")
+   post.NonModalNumber (" Z", safeZ * scale, "0.0###")
+   post.Eol()
+
+   dist = 9999999
+   refdistance = 5000 * scale
+   switchoffset = 0
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   if (lineNumber == 0) then
+      post.Text ("%     ")
+   else
+     post.Text ("N")
+     post.Number (lineNumber, "0000")
+   end
+   lineNumber = lineNumber + 1
+end
+
+
+function OnFinish()
+   endZ = safeZ
+   OnRapid()
+   endX = 0
+   endY = 0
+   endA = 0
+   OnRapid()
+   post.Text (" M30\n")
+end
+
+function OnRapid()
+--   dist = dist + math.hypot(endx-currentx , endy-currenty)
+   post.ModalText (" G0")
+   post.ModalNumber (" X", endX * scale, "0.0###")
+   post.ModalNumber (" Y", endY * scale, "0.0###")
+   post.ModalNumber (" Z", endZ * scale, "0.0###")
+   modalNumber (" A", endA, "0.0###")
+   post.Eol()
+end
+
+function OnMove()
+--   dist = dist + math.hypot(endx-currentx , endy-currenty)
+   post.ModalText (" G1")
+   post.ModalNumber (" X", endX * scale, "0.0###")
+   post.ModalNumber (" Y", endY * scale, "0.0###")
+   post.ModalNumber (" Z", endZ * scale, "0.0###")
+   modalNumber (" A", endA, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+--   dist = dist + math.hypot(endx-currentx , endy-currenty)
+   if(arcAngle <0) then
+      post.ModalText (" G3")
+   else
+      post.ModalText (" G2")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0###")
+   post.NonModalNumber (" Y", endY * scale, "0.0###")
+   post.ModalNumber (" Z", endZ * scale, "0.0###")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0###")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if(dist >= (refdistance/scale)) then
+      dist = 0
+      post.ModalText(" G79")
+      post.Eol()
+      post.ModalText(" G92 Z0.0")
+      post.Eol()
+   end
+   post.ModalText (" G0")
+   post.ModalNumber (" Z", pierceHeight * scale, "0.0###")
+   post.Eol()
+   post.Text (" M3 P0=")
+   post.Number (cutHeight, "0.0###")
+   post.Text (" P1=")
+   post.Number (pierceDelay, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenUp()
+   post.ModalText (" M5\n")
+   post.ModalText (" G0")
+   post.ModalNumber (" Z", safeZ * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   post.Text ("  (", toolName, ")\n")
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

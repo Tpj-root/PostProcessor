@@ -1,0 +1,234 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Homag MPR processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Generates Homag specific 'mpr' format code\n")
+end
+
+
+post.ForceExtension("mpr")
+post.SetOptions(post.ARC_SEGMENTS)
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.TextDirect ("[H\n")
+   post.TextDirect("VERSION=\"4.0\"\n")
+   post.Text("\\" , wx.wxFileName(postName):GetName(), "\\\n")
+   post.TextDirect("OP=\"2\"\n")
+   post.TextDirect("O2=\"0\"\n")
+   post.TextDirect("O3=\"0\"\n")
+   post.TextDirect("O4=\"0\"\n")
+   post.TextDirect("FM=\"3\"\n")
+   post.TextDirect("FW=\"500\"\n")
+   post.TextDirect("GP=\"0\"\n")
+   post.TextDirect("GX=\"1\"\n")
+   post.TextDirect("GY=\"0\"\n")
+   post.TextDirect("GXY\=\"0\"\n")
+   post.TextDirect("NP=\"1\"\n")
+   post.TextDirect("NE=\"0\"\n")
+   post.TextDirect("NA=\"0\"\n")
+   post.TextDirect("UP=\"0\"\n")
+   post.TextDirect("DW=\"0\"\n")
+   post.TextDirect("MI=\"0\"\n")
+   post.TextDirect("INCH=\"0\"\n")
+   post.TextDirect("View = \"NOMIRROR\"\n")
+   
+   post.TextDirect("\n\n[001\n")
+   post.Text("i=\"25.4\"\n")
+   post.Text("KM=\"Metric-Inch Conversion\"\n")
+   post.Text("L=\"")
+   post.Number(materialX2 - materialX1, "0.000")
+   post.Text("\"\n")
+   post.Text("KM=\"Length\"\n")
+   post.Text("B=\"")
+   post.Number(materialY2 - materialY1, "0.000")
+   post.Text("\"\n")
+   post.Text("KM=\"Width\"\n")
+   post.Text("D=\"")
+   post.Number(materialThick, "0.000")
+   post.Text("\"\n")
+   post.Text("KM=\"Thickness\"\n")
+
+   curContour = 1
+   post.TextDirect("\n\n]", curContour, "\n")
+
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   curPoint = 0
+   contours={}
+   spinSpeed = 0
+end
+
+
+function OnFinish()
+   StoreContour()
+   post.TextDirect("\n\n")
+   post.TextDirect ("<100\n")
+   post.TextDirect ("LA=\"L\"\n")
+   post.TextDirect ("BR=\"B\"\n")
+   post.TextDirect ("DI=\"D\"\n")
+   post.TextDirect ("FNX=\"0\"\n")
+   post.TextDirect ("FNY=\"0\"\n")
+   post.TextDirect ("AX=\"0\"\n")
+   post.TextDirect ("AY=\"0\"\n") 
+   for ct=1, curContour -1 do
+      local c = contours[ct]
+      post.TextDirect("\n\n")
+      post.TextDirect("<105 \\Contour\\\n")
+      post.TextDirect("EA=\"",ct, ":0\"\n")
+      post.TextDirect("MDA=\"SEN\"\n")
+      post.TextDirect("RK=\"NOWRK\"\n")
+      post.TextDirect("EE=\"", ct, ":", c.last, "\"\n")
+      post.TextDirect("MDE=\"SEN_AB\"\n")
+      post.TextDirect("KG=\"2\"\n")
+      post.TextDirect("MWA=\"3\"\n")
+      post.TextDirect("MBA=\"0.1\"\n")
+      post.TextDirect("EM=\"0\"\n")
+      post.TextDirect("SM=\"1\"\n")
+      post.TextDirect("S_A=\"", c.spindle, "\"\n")
+      post.TextDirect("F_=\"",c.feed, "\"\n") 
+      post.TextDirect("RI=\"1\"\n")
+      post.TextDirect("TNO=\"", c.tool, "\"\n")
+      post.TextDirect("ZA=\"@0\"\n")      
+      post.TextDirect("AB=\"0\"\n")
+      post.TextDirect("AW=\"0\"\n")
+      post.TextDirect("BW=\"0\"\n")
+      post.TextDirect("AF=\"0\"\n")
+      post.TextDirect("VLS=\"0\"\n")
+      post.TextDirect("VLE=\"0\"\n")
+      post.TextDirect("STUFEN=\"0\"\n")
+      post.TextDirect("ZSTART=\"0\"\n")
+      post.TextDirect("WZS=\"1\"\n")
+   end
+   post.TextDirect("\n\n!\n")
+end
+
+function OnToolChange()
+   StoreContour()
+   prevTool = tool
+   spinSpeed = 0
+end
+
+function OnSpindleCW()
+   spinSpeed = spindleSpeed
+end
+
+
+function OnSpindleCCW()
+   post.Error("Counter clockwise spindle not allowed")
+end
+
+function StoreContour()
+   if curPoint == 0 then return end
+   local c = {}
+   c.feed = feedRate / 1000
+   c.last = curPoint - 1
+   c.spindle = spinSpeed
+   c.tool = prevTool
+   curPoint = 0
+   contours[curContour] = c
+   curContour = curContour + 1
+   post.TextDirect("\n\n]", curContour, "\n")
+end
+
+function OnRapid()
+   if(endZ < safeZ and currentZ == safeZ and curPoint ~= 0) then
+      StoreContour()
+   end
+   if(endX > 1e17 or endY > 1e17 or endZ > 1e17) then return end
+
+   if(endZ > currentZ and endZ ~= safeZ) then
+      OnMove()
+   end
+   if(endZ < currentZ and currentZ ~= safeZ) then
+      OnMove()
+   end
+end
+
+
+function CheckStart()
+   if(curPoint ~= 0) then return end
+   post.TextDirect("\n$E", curPoint, "\nKP\n")
+   post.NonModalNumber("X=", currentX, "0.000")
+   post.Eol()
+   post.NonModalNumber("Y=", currentY, "0.000")
+   post.Eol()
+   post.NonModalNumber("Z=", currentZ, "0.000")
+   post.Eol()
+   post.TextDirect("KO=00\n")
+   curPoint = curPoint + 1
+end
+
+function OnMove()
+   CheckStart()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001 and endZ - currentZ == 0) then return end
+   
+   post.TextDirect("\n$E", curPoint, "\nKL\n")
+   post.NonModalNumber("X=", endX, "0.000")
+   post.Eol()
+   post.NonModalNumber("Y=", endY, "0.000")
+   post.Eol()
+   post.NonModalNumber("Z=", endZ, "0.000")
+   post.Eol()
+   curPoint = curPoint + 1
+end
+
+function OnArc()
+   CheckStart()
+   
+   if(endZ ~= currentZ) then
+      post.ArcAsMoves(0.1)
+      return
+   end
+   
+   post.TextDirect("\n$E", curPoint, "\nKA\n")
+   post.NonModalNumber("X=", endX, "0.000")
+   post.Eol()
+   post.NonModalNumber("Y=", endY, "0.000")
+   post.Eol()
+   if(arcAngle < -math.pi) then --more than 180 degrees ccw
+      post.TextDirect("DS=3\n")
+   elseif (arcAngle < 0) then --less than 180 degrees ccw
+      post.TextDirect("DS=1\n")
+   elseif (arcAngle < math.pi) then --less than 180 degrees cw
+      post.TextDirect("DS=0\n")
+   else --more than 180 degrees cw
+      post.TextDirect("DS=2\n")
+   end
+   post.NonModalNumber("R=", math.hypot(endX - arcCentreX, endY - arcCentreY), "0.000")
+   post.Eol()
+   curPoint = curPoint + 1
+end
+
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+         endZ = depth + buffer
+      end
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end

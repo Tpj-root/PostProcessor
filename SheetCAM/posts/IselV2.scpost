@@ -1,0 +1,181 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Isel post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Uses Isel proprietary code\n")
+end
+
+
+
+--   Created 16/5/2007
+
+
+
+function OnInit()
+   post.Text ("1MF_PBL_V1.0\n")
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (";Filename: ", fileName, "\n")
+   post.Text (";Post processor: ", postName, "\n")
+   post.Text (";Date: ", date, "\n")
+--   if(scale == metric) then
+--      text (" G21 (Units: Metric)\n") --metric mode
+--   else
+--      text (" G20 (Units: Inches)\n") --inch mode
+--   end
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   scale = 1000
+end
+
+
+function OnFinish()
+   endZ = safeZ
+   OnRapid()
+   post.Text ("PROGEND\n")
+end
+
+function OnRapid()
+   if(endX > 100000 or endY > 100000) then return end
+   if(math.hypot(math.hypot(endX-currentX,endY-currentY),endZ-currentZ) < 0.01) then return end
+
+   post.Text ("FASTABS")
+   post.ModalNumber (" X", endX * scale, "0")
+   post.ModalNumber (" Y", endY * scale, "0")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0")
+   post.Eol()
+end
+
+function OnMove()
+   if(math.hypot(math.hypot(endX-currentX,endY-currentY),endZ-currentZ) < 0.01) then return end
+   post.Text ("MOVEABS")
+   post.ModalNumber (" X", endX * scale, "0")
+   post.ModalNumber (" Y", endY * scale, "0")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0")
+   post.Eol()
+end
+
+function OnArc()
+   if(endZ ~= currentZ) then
+      post.ArcAsMoves(0.05)
+      return
+   end
+   if(arcAngle <0) then
+      post.Text ("CCWABS ")
+   else
+      post.Text ("CWABS ")
+   end
+   post.NonModalNumber (" I", arcCentreX * scale, "0")
+   post.NonModalNumber (" J", arcCentreY * scale, "0")
+   post.ModalNumber (" X", endX * scale, "0")
+   post.ModalNumber (" Y", endY * scale, "0")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0")
+   post.Eol()
+end
+
+
+function OnSpindleCW()
+   post.Text ("SPINDLE CW RPMS")
+   post.Number (spindleSpeed, "0")
+   post.Eol()
+   post.Text ("SPINDLE ON\n")
+end
+
+function OnSpindleCCW()
+   post.Text ("SPINDLE CCW RPM ")
+   post.Number (spindleSpeed, "0")
+   post.Eol()
+   post.Text ("SPINDLE ON\n")
+end
+
+function OnSpindleOff()
+   post.Text ("SPINDLE OFF\n")
+end
+
+
+function OnNewOperation()
+   post.Text (";Operation: ", operationName, "\n")
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(";",commentText,"\n")
+end
+
+function OnToolChange()
+   post.Text ("GETTOOL ")
+   post.Number (tool, "0")
+   post.Eol()
+end
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+function OnNewPart()
+   post.Text(";Part: ",partName,"\n");
+end
+
+
+function OnFloodOn()
+   post.Text ("COOLANT ON\n")
+end
+
+function OnMistOn()
+   post.Text ("COOLANT ON\n")
+end
+
+function OnCoolantOff()
+   post.Text ("COOLANT OFF\n")
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end
+
+function OnSetFeed()
+   post.Text("VEL ")
+   post.Number (feedRate * scale, "0")
+   post.Eol()
+end
+
+function OnTapStart()
+   post.Error("This machine cannot tap")
+end
+
+
+

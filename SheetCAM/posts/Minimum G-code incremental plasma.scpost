@@ -1,0 +1,125 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Minimum G-code post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Min spec g-code for compatibility with as many controllers as possible\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Non modal coordinates\n")
+   ctrl:AppendText("No comments\n")
+   ctrl:AppendText("Incremental\n")
+   ctrl:AppendText("G-codes used:\n")
+   ctrl:AppendText("G00,G01,G02,G03,G20,G21\n")
+   ctrl:AppendText("M-codes used:\n")
+   ctrl:AppendText("M03,M04,M05,M07,M08,M09\n")
+end
+
+
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   Created 19/10/2004
+--   based on Mach2.post
+
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   if(scale == metric) then
+      post.Text ("G21\n") --metric mode
+      format = "0.00"
+   else
+      post.Text ("G20\n") --inch mode
+      format = "0.000"
+   end
+   post.Text ("G92X0Y0\nG91\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   curx =0
+   cury =0
+   
+end
+
+
+function OnFinish()
+end
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.Text ("G00")
+   doxy()
+   post.Eol()
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.Text ("G01")
+   doxy()
+   post.ModalNumber ("F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text ("G03")
+   else
+      post.Text ("G02")
+   end
+   doxy()
+   post.Text ("I")
+   post.Number ((arcCentreX - currentX) * scale, format)
+   post.Text ("J")
+   post.Number ((arcCentreY - currentY) * scale, format)
+   post.ModalNumber ("F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+
+function doxy()
+   if(endX < 1e17) then
+      tmp = (endX * scale) - curx
+      tmp = math.toint(tmp * 1000)/1000
+      curx = curx + tmp
+      post.NonModalNumber("X",tmp,"0.0##")
+   end
+
+   if(endY < 1e17) then
+      tmp = (endY * scale) - cury
+      tmp = math.toint(tmp * 1000)/1000
+      cury = cury + tmp
+      post.NonModalNumber("Y",tmp,"0.0##")
+   end
+end
+
+function OnPenDown()
+   if (pierceDelay > 0.001) then
+      post.Text ("G04P")
+      post.Number (pierceDelay * 1000,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   if (endDelay > 0) then
+      post.Text ("G04P")
+      post.Number (endDelay * 1000,"0.###")
+      post.Eol()
+   end
+end
+
+function OnToolChange()
+end
+
+function OnNewPart()
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

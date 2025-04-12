@@ -1,0 +1,232 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Biesse XNC post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Tools 100 upwards are spindle 2\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("uses Biesse format\n")
+end
+
+function comment(str)
+   post.Text ("[COMMENTO]\n")
+   post.Text (str .. "\n")
+end
+
+function OnInit()
+   lineNumber = 10
+   nolines = true
+   post.SetCommentChars ("[]", "()")  --make sure ( and ) characters do not appear in system Text
+   comment ("Filename: ".. fileName)
+   comment ("Date: ".. date)
+   post.Text"[CENTRO01]\n"
+   post.Text("PARAMETRI=000000000\n")
+   post.Text("UTENSILI=000000000\n")
+   post.Text("LABELF=000000000\n")
+   post.Text("LABELC=000000000\n")
+   post.Text("FORATURA=000000000\n")
+   post.Text("CONTORNATURA=000000000\n")
+   post.Text("TABELLEFORI=000000000\n")
+   post.Text("CONFASSIST=000000000\n")
+   post.Text("ATTREZZAGGIO=000000000\n\n")
+   
+   post.Text("[PARAMETRI01]\n")
+   nolines = false
+   post.Text(" G71 HC=1 FIL=0 BLO=0 ACC=0 RUO=0 PRS=1 PRL=1 KA=0.000 LX=")
+   post.Number ((materialX2 - materialX1),"0.00#")
+   post.Text(" LY=")
+   post.Number ((materialY2 - materialY1),"0.00#")
+   post.Text(" LZ=")
+   post.Number (materialThick,"0.00#")
+   post.Eol()
+   nolines = true
+   post.Text("%\n[UTENSILI01]\n%\n[CONTORNATURA01]\n")
+   nolines = false
+   
+   
+--   if(scale == metric) then
+--      post.Text (" G21 (Units: Metric)\n") --metric mode
+--   else
+--      post.Text (" G20 (Units: Inches)\n") --inch mode
+--   end
+--   post.Text (" G40 G90 G91.1\n F1\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   if nolines then return end
+   post.Text ("N")
+   post.Number (lineNumber, "0")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" L=PSU L=POFF Z=PRK X=PRK Y=PRK\n")
+   nolines = true
+   post.Text("%\n[FORATURA01]\n%\n[TABELLEFORI01]\n%\n[LABELC01]\n%\n[LABELF01]\n%\n")
+   post.Text("[CONFASSIST01]\n%\n[ATTREZZAGGIO01]\n%\n[]\n")
+end
+
+
+function OnRapid()
+   post.ModalNumber (" X", endX, "0.###")
+   post.ModalNumber (" Y", endY, "0.###")
+   if endZ < 1e17 then
+      post.ModalNumber (" Z", -(endZ + materialThick), "0.###")
+   end
+   post.Text (" G0")
+   post.Eol()
+end
+
+
+function OnSetFeed()
+   post.NonModalNumber(" F=",feedRate / 1000, "0.##")
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalNumber (" X", endX, "0.###")
+   post.ModalNumber (" Y", endY, "0.###")
+   post.ModalNumber (" Z", -(endZ + materialThick), "0.###")
+   post.Text (" G1")
+   post.Eol()
+end
+
+function OnArc()
+   post.NonModalNumber (" X", endX, "0.###")
+   post.NonModalNumber (" Y", endY, "0.###")
+   post.ModalNumber (" Z", -(endZ + materialThick), "0.###")
+   post.Text (" I")
+--   post.Number ((arcCentreX - currentX), "0.###")
+   post.Number (arcCentreX, "0.###")
+   post.Text (" J")
+--   post.Number ((arcCentreY - currentY), "0.###")
+   post.Number (arcCentreY, "0.###")
+   if(arcAngle <0) then
+      post.Text (" G3")
+   else
+      post.Text (" G2")
+   end
+   post.Eol()
+end
+
+
+function OnSpindleCW()
+   post.Text(" L=PON\n")
+end
+
+function OnSpindleCCW()
+   post.Text(" L=PON\n")
+end
+
+function OnSpindleOff()
+   post.Text(" L=POFF\n")
+end
+
+
+function OnNewOperation()
+   --post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+end
+
+
+function OnToolChange()
+   nolines = false
+   post.Text(" PAN=")
+   post.Number(tool / 100, "0")
+   while tool > 100 do
+      tool = tool -100
+   end
+   post.Text(" ST1=\"" .. toolName ..  "\" ST2=\"NULL\" ST3=\"NULL\"  L=PCUA\n")
+end
+
+function OnSpindleChanged()
+end
+
+function OnNewPart()
+--   post.Text(" (Part: ",partName,")\n");
+end
+
+
+function OnFloodOn()
+end
+
+function OnMistOn()
+end
+
+function OnCoolantOff()
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end
+
+function OnFileClosed()
+   path = filePath .. "/" .. fileName, wx.wxFile.read_write
+   inFile = wx.wxFile(path)
+   if not inFile:IsOpened() then
+      post.Error("Unable to open file")
+   return end
+   
+   bytes,text = inFile:Read(inFile:Length())
+   inFile:Close()
+   
+   text = string.gsub(text, string.char(13),"") --strip carriage returns
+     
+
+   Replace("PARAMETRI")
+   Replace("UTENSILI")
+   Replace("LABELF")
+   Replace("LABELC")
+   Replace("FORATURA")
+   Replace("CONTORNATURA")
+   Replace("TABELLEFORI")
+   Replace("CONFASSIST")
+   Replace("ATTREZZAGGIO")
+   
+   outFile = wx.wxTempFile(path)
+   outFile:Write(text)
+   outFile:Commit();
+end
+
+
+function Replace(target)
+   index = string.find(text, "%[" .. target)
+   if (not index) then
+      post.Error("Could not find ".. target)
+   end
+   text = string.gsub(text, "000000000", post.FormatNumber(index - 1,"000000000"), 1)   
+end
+
+

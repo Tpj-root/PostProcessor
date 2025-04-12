@@ -1,0 +1,188 @@
+--************************************************
+--*** Set these values up to suit your machine ***
+--************************************************
+
+--rotary axis. Normally this would be "C"
+rotaryAxis = "C"
+
+--Number of units for one full revolution of the rotary axis
+unitsPerRev=-360
+
+
+-- Rapids will move the shortest distance to the next cut but may cause machines with limited rotation
+-- to 'wind up'. Set this to 0 to disable optimisation.
+--defaults to 1 if not defined
+optimiseRapids = 1
+
+
+--Set this to true if your Z0 is on the centre line of the tube
+--Set it to false if Z0 is the surface of the tube
+zCentre = true
+
+
+maxRotation = 6
+
+--************************************************
+--***           End of settings                ***
+--************************************************
+
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Post for rotary-plasma plugin and Fangling 4 axis controllers\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M07/M08 turn the torch on/off\n")
+   ctrl:AppendText("M08/M09 turn the engraver on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("Post variables:\n")
+end
+
+post.ForceExtension("txt")
+
+function OnInit()
+   offX = 0
+   offY = 0
+   offZ = 0
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+--[[   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")]]
+   post.Text("(D=", var.CornerRadius * 2,")\n")
+   if(var.BeamType == 0) then -- flat
+      post.Text("(T=", materialThick,")\n")
+   else --rectangular etc
+      post.Text("(T=", var.WallThickness,")\n")
+   end
+   post.Text("(F=1,1000)\n")
+   if(var.BeamType == 1) then -- Rectangular
+      post.Text("(SHAPE=1)\n")
+   else --rectangular etc
+      post.Text("(SHAPE=0)\n")
+   end
+   post.Text("(W=", var.BeamWidth,")\n")
+   post.Text("(H=", var.BeamHeight,")\n")
+   post.Text("(R=", var.CornerRadius,")\n")
+   post.Text("(TABLETOP_TO_CENTER=1)\n")
+   zOffset = 0
+   if zCentre then
+      post.Text("(Z0 is on the centre line of the tube)\n")
+   else
+      if(var.BeamType == 0) then --flat
+      elseif(var.BeamType == 1) then --rectangular
+         zOffset=-var.BeamHeight / 2
+         post.Text("(Z0 is on the height of the tube)\n")
+      elseif(var.BeamType == 2) then --round
+         zOffset=-var.PipeDiameter / 2
+         post.Text("(Z0 is on the surface of the tube)\n")
+      elseif(var.BeamType == 3) then --Ibeam
+         if(var.BeamHeight < var.BeamWidth) then
+            zOffset=-var.BeamHeight / 2
+         else
+            zOffset=-var.BeamWidth / 2
+         end
+         post.Text("(Z0 is on the lowest flat face)\n")
+      else
+         post.Error("This machine cannot use custom profiles") 
+      end
+   end
+   if(scale == metric) then
+      post.Text ("G21\n") --metric mode
+   else
+      post.Text ("G20\n") --inch mode
+   end
+   post.Text ("G90 G40\n")
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   firstRef = true
+   currentZAxis = "Z"
+   lastz = 0
+
+end
+
+function OnFinish()
+   endZ = safeZ
+   OnRapid()
+   endX = 0
+   endY = 0
+   offX = 0
+   offY = 0
+   offZ = 0
+   OnRapid()
+--   post.ModalText(" G92 A0\n")
+   post.Text ("M08 M02\n")
+end
+
+function OnRapid()
+   post.Text ("G00")
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   if(endZ ~= pierceHeight) then
+      post.ModalNumber (" " .. currentZAxis, (zOffset + endZ + offZ) * scale, "0.0000")
+   end
+   post.ModalNumber (" " .. rotaryAxis, endA, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.Text ("G01")
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   post.ModalNumber (" " .. currentZAxis, (endZ + zOffset + offZ) * scale, "0.0000")
+   post.ModalNumber (" " .. rotaryAxis, endA, "0.0000")
+--   post.ModalNumber (" F", rotaryVals.f * scale, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text ("G03")
+   else
+      post.Text ("G02")
+   end
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   if(offZ) then
+      post.ModalNumber (" " .. currentZAxis, (endZ + zOffset + offZ) * scale, "0.0000")
+   end
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" " .. rotaryAxis, endA, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnPenDown()
+    post.Text("M07\n")
+end 
+
+function OnPenUp()
+    post.Text("M08\n")
+end 
+
+
+function OnNewOperation()
+   post.Text ("(Operation: ", operationName, ")\n")
+end
+
+function OnNewPart()
+   post.Text("(Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end
+
+ignorePierceHeightMove = true
+package.path = sc.Globals:Get().thisDir .. "/plugins/RotaryPlasma/?.lua"
+require("rotaryhelper")

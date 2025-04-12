@@ -1,0 +1,218 @@
+--head 1
+xOffset1 = 0
+yOffset1 = 0
+zAxis1 = " W"
+zAxis1Backlash = 0.125
+
+
+--head 2
+xOffset2 = 0
+yOffset2 = 456.15
+zAxis2 = " Z"
+zAxis2Backlash = 0
+
+zFeed = 1905
+
+post.ForceExtension "nc"
+
+initString = "G90\nG92 X0. Y0. Z0. W0.\nG92 X0.0 Y-12.75 Z-8.45 W-7.56\n"
+endString = "HOME\nM2\n"
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Thermwood 9100 series control with two heads, Z and W\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("No comments\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   Created 19/10/2004
+--   based on Mach2.post
+
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   if(scale == metric) then
+      post.Text ("G71\n") --metric mode
+   else
+      post.Text ("G70\n") --inch mode
+   end
+   post.Text (initString)
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   xOffset = 0
+   yOffset = 0
+   zBacklash = 0;
+   zAxis = zAxis1
+end
+
+
+function OnFinish()
+   post.Text (endString)
+end
+
+function DoZ(feed)
+   if(endZ ~= currentZ) then
+      if(feed ~= feedRate) then
+         post.Text ("G01")
+      end
+      if(zBacklash == 0 or endZ > currentZ or endZ > zBacklash) then
+         post.ModalNumber (zAxis, -(endZ + toolOffset) * scale, "0.0000")
+         post.ModalNumber (" F", feed * scale, "0.###")
+         post.Eol()
+         return
+      end
+      post.ModalNumber (zAxis, -(endZ + toolOffset - zBacklash) * scale, "0.0000")
+      post.ModalNumber (" F", feed * scale, "0.###")
+      post.Eol()
+      if(zBacklash ~= 0) then
+         post.Text ("G01")
+         post.ModalNumber (zAxis, -(endZ + toolOffset) * scale, "0.0000")
+         post.Eol()
+      end
+   elseif(feed == feedRate) then
+      post.ModalNumber (" F", feedRate * scale, "0.###")
+      post.Eol()
+   end
+end
+
+
+function OnRapid()
+   if(endX > 1e17 or endY > 1e17) then return end
+   if(math.hypot(endX - currentX, endY - currentY) > 0.001) then
+      post.Text ("G00")
+      post.ModalNumber (" X", (endX + xOffset) * scale, "0.0000")
+      post.ModalNumber (" Y", (endY + yOffset) * scale, "0.0000")
+      post.Eol()
+   end
+   DoZ(zFeed)
+end
+
+function OnMove()
+   post.Text ("G01")
+   post.ModalNumber (" X", (endX + xOffset) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + yOffset) * scale, "0.0000")
+   DoZ(feedRate)
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text ("G03")
+   else
+      post.Text ("G02")
+   end
+   post.ModalNumber (" X", (endX + xOffset) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + yOffset) * scale, "0.0000")
+   post.ModalNumber (zAxis, -(endZ + toolOffset) * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   DoZ(feedRate)
+end
+
+
+function OnSpindleCW()
+--   post.Text (" M03")
+--   modalnumber (" S", spindlespeed, "0.##")
+--   post.Eol()
+end
+
+function OnSpindleCCW()
+--   post.Text (" M04")
+--   modalnumber (" S", spindlespeed, "0.##")
+--   post.Eol()
+end
+
+function OnSpindleOff()
+--   post.Text (" M05\n")
+end
+
+
+function OnNewOperation()
+
+end
+
+function OnToolChange()
+   post.Text ("(Change tool to " .. toolName .. ")\n")
+   local ofX = xOffset
+   local ofY = yOffset
+   if(tool < 100) then
+      xOffset = xOffset1
+      yOffset = yOffset1
+      zAxis = zAxis1
+      zBacklash = zAxis1Backlash
+   else
+      xOffset = xOffset2
+      yOffset = yOffset2
+      zAxis = zAxis2
+      zBacklash = zAxis2Backlash
+   end
+   if(ofX ~= xOffset or ofY ~= yOffset) then
+      post.CancelModalNumbers()
+   end
+end
+
+function OnSpindleChanged()
+end
+
+function OnNewPart()
+end
+
+
+function OnFloodOn()
+   post.Text(" M08\n")
+end
+
+function OnMistOn()
+   post.Text(" M07\n")
+end
+
+function OnCoolantOff()
+   post.Text(" M09\n")
+end
+
+function OnDrill()
+   OnRapid()
+   currentX = endX
+   currentY = endY
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   currentZ = endZ
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      currentZ = endZ
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+         currentZ = endZ
+         endZ = depth + buffer
+      end
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end

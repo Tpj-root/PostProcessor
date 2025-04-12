@@ -1,0 +1,184 @@
+function OnShowAbout()
+   post.ShowMsg("Gerber sabre post processor")
+   post.ShowMsg("")
+   post.ShowMsg("Non modal G-codes")
+   post.ShowMsg("Modal coordinates")
+   post.ShowMsg("No comments")
+   post.ShowMsg("Incremental IJ")
+   post.ShowMsg("helical interpolation is done as short line moves")
+   post.ShowMsg("no tapping")
+end
+
+
+
+--   Created 06/03/2007
+--   based on mach2.post
+
+
+
+function OnInit()
+   nonumbers = 1
+   post.Text("%\n")
+   nonumbers = 0
+   lineNumber = 10
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text(" (MOVE CUTTER TO HOME POSITION)\n")
+   if(scale == metric) then
+      post.Text (" G21\n") --metric mode
+   else
+      post.Text (" G20\n") --inch mode
+   end
+   post.Text (" G17\n G90\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   if (nonumbers == 1) then return end
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M30\n")
+   nonumbers = 1
+   post.Text("%\n")
+end
+
+function OnRapid()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset + materialThick) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset + materialThick) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnArc()
+   if(math.abs(endZ - currentZ)>0.01) then
+      post.ArcAsMoves(0.1)
+      return
+   end
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset + materialThick) * scale, "0.0000")
+   post.NonModalNumber (" I",(arcCentreX - currentX) * scale, "0.0000")
+   post.NonModalNumber (" J",(arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+
+function OnSpindleCW()
+   post.Text (" M03")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.Text (" M03")
+   post.Eol()
+   post.Warning("CCW spindle direction not supported")
+   post.Warning("Using CW direction")
+end
+
+function OnSpindleOff()
+   post.Text (" M05\n")
+end
+
+
+function OnNewOperation()
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   post.Text (" M06 T")
+   post.Number (tool, "0")
+   post.Eol()
+end
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+
+function OnFloodOn()
+   post.Text(" M08\n")
+end
+
+function OnMistOn()
+   post.Text(" M07\n")
+end
+
+function OnCoolantOff()
+   post.Text(" M09\n")
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = 0.5
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+  end
+   while depth > drillZ do
+      endZ = depth + buffer
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end
+
+function OnSetFeed()
+end
+
+function OnTapStart()
+   post.Error("Tapping is not supported")
+end
+
+
+

@@ -1,0 +1,99 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Burny 2.5 and 3\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Uses absolute coordinates\n")
+end
+
+
+--   Created 30/6/2006
+-- Added drilling 13/5/2010
+
+toolClass = "" --a fudge to make the post work with earlier versions of SheetCam
+
+function OnInit()
+   nolines = true
+   post.Text("%\n")
+   nolines = nil
+   if(scale == metric) then
+      post.Text ("G71\n") --metric mode
+   else
+      post.Text ("G70\n") --inch mode
+   end
+   post.Text ("G90\nG40\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   curx =0
+   cury =0
+end
+
+--[[
+function OnNewLine()
+   if nolines then return end
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end]]
+
+function OnFinish()
+   post.Text ("M30\n")
+end
+
+function OnRapid()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalNumber("X", endX, "0.0###")
+   post.ModalNumber("Y", endY, "0.0###")
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalNumber("X", endX, "0.0###")
+   post.ModalNumber("Y", endY, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText ("G3")
+   else
+      post.ModalText ("G2")
+   end
+   post.ModalNumber("X", endX, "0.0###")
+   post.ModalNumber("Y", endY, "0.0###")
+--   post.ModalNumber ("I", arcCentreX * scale, "0.0##")
+--   post.NonModalNumber ("J", arcCentreY * scale, "0.0##")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnPenDown()
+   if(toolClass == "MarkerTool") then
+      post.Text("M08\n")
+   else
+      post.Text("M04\n")
+   end
+end
+
+function OnPenUp()
+   if(toolClass == "MarkerTool") then
+      post.Text("M09\n")
+   else
+      post.Text("M03\n")
+   end
+end
+
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end
+

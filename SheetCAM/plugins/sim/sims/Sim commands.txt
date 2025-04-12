@@ -1,0 +1,37 @@
+    CL = create LED (caption)
+    CT = create text box (caption)
+    CN = create number box (caption units) see below for the units values
+    DC = draw controls (call this after creating them with the above commands)
+
+    SL = Set LED (index,value) value =0 is off, any other value = on
+    ST = set text(index,text)
+    SN = set number(index,value)
+ in the above cases index starts at 1, not 0. The first item created is 1 then second 2 and so on
+
+    RM = rapid move (x y z)
+    MV = move (x y z)
+    AR = arc (x y z a) x,y,z = centre a = angle
+
+    FR = set feed rate
+    RR = set rapid rate
+    TD = set tool diameter
+
+    SX = Set X position
+    SY = Set Y position
+    SZ = Set Z position
+
+    OP = select operation(n) n=operation index, starting at 0
+    PT = select part(n) n=part index, starting at 0
+
+    ZO = Z offset - coordinate of top of work
+
+
+unit values
+    unitLINEAR = 0
+    unitANGULAR = 1
+    unitFEED = 2
+    unitRPM = 3
+    unitTIME = 4
+    unitDECPLACE = 5
+    unitPERCENT = 6
+    unitPITCH = 7

@@ -1,0 +1,220 @@
+---------------------Edit these values to set various options---------------
+
+--plasma on and off codes
+   plasmaOn = "M03"
+   plasmaOff = "M05"
+
+--scriber on and off codes
+   scriberOn = "M08"
+   scriberOff = "M09"
+
+--Scriber X,Y,Z offsets
+--NOTE: These are always in MILLIMETRES
+   scriberX = 0
+   scriberY = 0
+   scriberZ = 0
+
+--enable/disable Z axis. Set to false if you want to disable the Z axis
+   zAxis = true
+
+--enable disable line numbers
+   lineNumbers = true
+
+--edit this line to output the standard initialization codes for your machine
+--note \n denotes a new line
+   initString = " G90 G40\n F1\n"
+
+-------------------------------------------------------------------------------
+
+
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Generic plasma post with optional engraver\n")
+   ctrl:AppendText("Tools 100 and up are the engraver\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off (can be changed - click on 'Edit post')\n")
+   ctrl:AppendText("M08/M09 turn the engraver on/off (can be changed - click on 'Edit post')\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("\nScriber uses tool numbers 100 and up")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("You can disable the Z axis - click on 'Edit post'")
+
+end
+
+
+
+--   created 1/1/06
+--   Based on plasma1.post
+
+
+
+function OnInit()
+
+   offX = 0
+   offY = 0
+   offZ = 0
+
+   lineNumber = 10
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+
+   post.Text (initString)
+
+
+end
+
+function OnNewLine()
+   if not lineNumbers then return end
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   if(zAxis) then
+      endZ = safeZ
+      OnRapid()
+   end
+   endX = 0
+   endY = 0
+   OnRapid()
+   post.Text (" M30\n")
+end
+
+function OnRapid()
+   if (not zAxis and math.hypot(endX-currentX , endY - currentY) < 0.0001) then return end
+   post.ModalText (" G00")
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   if(zAxis) then
+      post.ModalNumber (" Z", (endZ + offZ) * scale, "0.0000")
+   end
+   post.Eol()
+end
+
+function OnMove()
+   if (not zAxis and math.hypot(endX-currentX , endY - currentY) < 0.0001) then return end
+   post.ModalText (" G01")
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   if(zAxis) then
+      post.ModalNumber (" Z", (endZ + offZ) * scale, "0.0000")
+   end
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.ModalNumber (" X", (endX + offX) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY + offY) * scale, "0.0000")
+   if(zAxis) then
+      post.ModalNumber (" Z", (endZ + offZ) * scale, "0.0000")
+   end
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if(tool > 99) then
+      post.Text(" ", scriberOn, "\n")
+      return
+   end
+
+
+
+   if (preheat > 0.001) then
+      if(zAxis) then
+         post.ModalText (" G00")
+         post.ModalNumber (" Z", cutHeight * scale, "0.0000")
+      end
+      post.Text ("\n G04 P")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end
+   if(zAxis) then
+      post.ModalText (" G00")
+      post.ModalNumber (" Z", pierceHeight * scale, "0.0000")
+   end
+   post.Text ("\n M03\n")
+   if (pierceDelay > 0.001) then
+      post.Text (" G04 P")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   if(tool > 99) then
+      post.Text(" ", scriberOff, "\n")
+      return
+   end
+   post.Text(" ", plasmaOff, "\n")
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnToolChange()
+    oldZ = offZ
+    if (tool > 99) then
+        newX = scriberX
+        newY = scriberY
+        offZ = scriberZ
+    else
+        newX = 0
+        newY = 0
+        offZ = 0
+    end
+    if(oldZ ~= offZ) then
+        OnRapid()
+    end
+    offX = newX
+    offY = newY
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

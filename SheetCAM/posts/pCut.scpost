@@ -1,0 +1,122 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Rutex pCut post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("All moves are Incremental \n")
+end
+
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   revision 7/10/05
+--   Added new arc handling
+
+--   created 27/7/05
+--   Based on Plasma1.post
+
+
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+--   text (" (Filename: ", filename, ")\n")
+--   text (" (Post processor: ", postname, ")\n")
+--   text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21\n") --metric mode
+   else
+      post.Text (" G20\n") --inch mode
+   end
+   post.Text (" G40\n")
+   curx =0
+   cury =0
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+--   text ("N")
+--   number (line, "0000")
+--   line = line + 10
+end
+
+
+function OnFinish()
+   post.Text (" M05\n M30\n")
+end
+
+function OnRapid()
+   post.Text (" G00")
+   post.ModalNumber (" X", (endX - curx) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY - cury) * scale, "0.0000")
+--   modalnumber (" Z", endz * scale, "0.0000")
+   post.Eol()
+   curx = endX
+   cury = endY
+end
+
+function OnMove()
+   post.Text (" G01")
+   post.ModalNumber (" X", (endX - curx) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY - cury) * scale, "0.0000")
+--   modalnumber (" Z", endz * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+   curx = endX
+   cury = endY
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text (" G03")
+   else
+      post.Text (" G02")
+   end
+   post.ModalNumber (" X", (endX - curx) * scale, "0.0000")
+   post.ModalNumber (" Y", (endY - cury)* scale, "0.0000")
+--   modalnumber (" Z", endz * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+   curx = endX
+   cury = endY
+end
+
+
+function OnPenDown()
+--   if (preheat > 0.001) then
+--      modaltext (" G00")
+--      modalnumber (" Z", cutheight * scale, "0.0000")
+--      text ("\n G04 P")
+--      number (preheat,"0.###")
+--      eol()
+--   end
+--   modaltext (" G00")
+--   modalnumber (" Z", pierceheight * scale, "0.0000")
+   post.Text ("\n M03\n")
+   if (pierceDelay > 0.001) then
+      post.Text (" G04 P")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   post.Text (" M05\n")
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+

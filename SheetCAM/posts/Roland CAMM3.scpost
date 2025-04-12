@@ -1,0 +1,131 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Roland CAMM-GL I post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Outputs Roland CAMM-GL I code using mode 1\n")
+end
+
+
+
+--   created 3/02/08
+
+
+
+function OnInit()
+   scale = 40
+--   text("IN;PA;PU;\n")
+   lastinst = 0
+   arcscale = -57.2957795130
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   lastz = 100000
+   post.Text("@ -1,")
+   post.Number(safeZ * scale,"0")
+   post.Eol()
+end
+
+function OnNewLine()
+end
+
+
+function OnFinish()
+   post.Text("H\n")
+end
+
+function OnRapid()
+end
+
+function OnMove()
+   if(endX > 100000) then return end
+   post.Text("Z ")
+   post.Number ( endX * scale, "0")
+   post.Text(",")
+   post.Number ( endY * scale, "0")
+   post.Text(",")
+   post.Number ( endZ * scale, "0")
+   post.Text("\n")
+end
+
+function OnArc()
+   post.ArcAsMoves(0.1)
+   return
+--   if(math.abs(endz - currentz) > 0.001) then error("This machine cannot ramp cut") end
+--   text("C ");
+--   number ( arccentrex * scale, "0")
+--   text(",")
+--   number ( arccentrey * scale, "0")
+--   text(",")
+--   number ( math.hypot(endx - arccentrex, endy - arccentrey) * scale , "0")
+--   text(",")
+--   local ang = math.atan2(currentx - arccentrex, currenty - arccentrey)
+--   number (ang * arcscale , "0.####")
+--   text(",")
+--   number ( (ang - arcangle) * arcscale, "0.####")
+--   text(",1\n")
+end
+
+
+function OnPenDown()
+--   if(math.hypot(endx - currentx, endy - currenty) < 0.01) then return end
+   post.Text("M ")
+   post.Number ( endX * scale, "0")
+   post.Text(",")
+   post.Number ( endY * scale, "0")
+   post.Text("\n")
+end
+
+
+function OnPenUp()
+end
+
+function OnSpindleCW()
+
+end
+
+function OnSpindleCCW()
+
+end
+
+function OnSpindleOff()
+
+end
+
+function OnSetFeed()
+   post.Text("V ")
+   post.Number(feedRate * scale,"0")
+   post.Eol()
+   post.Text("F ")
+   post.Number(feedRate * scale,"0")
+   post.Eol()
+end
+
+
+function OnNewOperation()
+
+end
+
+function OnToolChange()
+--   text("\nSP")
+--   number (tool,"0")
+--   text(";\n")
+--   lastinst = 0
+end
+
+function OnSpindleChanged()
+end
+
+function OnNewPart()
+end
+
+
+function OnFloodOn()
+end
+
+function OnMistOn()
+end
+
+function OnCoolantOff()
+end
+
+function OnDrill()
+end

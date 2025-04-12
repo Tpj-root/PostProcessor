@@ -1,0 +1,265 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("GyroTurk post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("uses G43 tool length offsets\n")
+end
+
+
+function OnInit()
+   post.TextDirect("%\n")
+   post.SetCommentChars ("();", "[]:")  --make sure ( and ) characters do not appear in system text
+   post.Text (";Filename: ", fileName, "\n")
+   post.Text (";Post processor: ", postName, "\n")
+   post.Text (";Date: ", date, "\n")
+--[[   if(scale == metric) then
+      post.Text (" G21 ;Units: Metric\n") --metric mode
+   else
+      post.Text (" G20 ;Units: Inches\n") --inch mode
+   end
+]]
+   post.Text ("SHP(")
+   post.Number(materialX1 * scale, "0.###")
+   post.Text(",")
+   post.Number(materialY1 * scale, "0.###")
+   post.Text(",")
+   post.Number(-materialThick * scale, "0.###")
+   post.Text(",")
+   post.Number(materialX2 * scale, "0.###")
+   post.Text(",")
+   post.Number(materialY2 * scale, "0.###")
+   post.Text(",")
+   post.Number(safeZ * scale, "0.###")
+   post.Text(")\n")
+   post.Text ("G90\nG64\n")
+   post.Text("G651 A2 B30 D3 E1 F1 G15 H15 I0.65 J2 K5 L5 M100 N100 O100 P100 Q0.5 R0.5 S0.5 U0 V0 T4 W1\n")
+   post.Text("G659\n")
+   post.Text("JMP (start_track)\n")
+
+   pi = math.pi
+   twopi = 2 * pi
+   angscale = 180 / pi
+--angscale = 1
+   lastang = 0
+   curang = 0
+   post.Eol()
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+
+   lastType = 0
+   currentZ = 0
+   angAcc = 0;
+   wasRapid = false
+   firstTrack = true
+   lineNumber = 1
+   lastClass = ""
+end
+
+function StartTrack()
+   post.TextDirect("\n")
+   post.Text ("N")
+   post.Number (lineNumber, "0")
+   lineNumber = lineNumber + 1
+   post.Eol()
+   if toolClass == "PlasmaTool" then
+      post.Text("G650 T1 W1\n")
+      post.Text("G920\n")
+      post.Text("G806 T2 H1 D1\n")
+   else
+      post.Text("G650 T4 W1\n")
+      post.Text("G920 A100 D100\n")
+      post.Text("G806 T1 H1 D1\n")
+   end
+   if firstTrack then
+      firstTrack = false
+      post.Text("G153 G0 Z(trav_safe_z_start)\n")
+   end
+end
+
+
+function OnFinish()
+   post.Text("G840 L0 T0\n")
+   post.Text("G153 G0 Z(trav_safe_z)\n")
+--   post.Text("G180 X1363.617 Y786.947 Z(workpiece_safe_dist)\n")
+--   post.Text("G153 G0 X(kine_x) Y(kine_y)\n")
+   post.Text("G169\n")
+   post.Text ("M30\n")
+end
+
+
+function OnRapid()
+--[[
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   if(endZ == safeZ and currentZ ~= safeZ) then
+      post.Text(" Z(trav_safe_z)")
+   end
+   post.Text(" F")
+   post.Number (10000 * scale, "0.###")
+   wasRapid = true
+
+   post.Eol()
+   ]]
+end
+
+
+
+function OnMove()
+   local diffx = endX - currentX
+   local diffy = endY - currentY
+   if(diffx ==0 and diffy ==0) then
+      return -- nothing to do
+   end
+   CheckLead()
+   post.Text ("G01")
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   if wasRapid then
+--      post.Text (" FVA1")
+      wasRapid = false
+   end
+   post.Eol()
+end
+
+function CheckLead()
+   if leadinType == lastType then return end
+   if leadinType == 0 then
+      if lastType == 1 then
+         post.Text("G832\n")
+      end
+   elseif leadinType == 2 then
+         post.Text("G831\n")
+   end
+   lastType = leadinType
+end
+
+
+function OnArc()
+   CheckLead()
+   if(arcAngle <0) then
+      post.Text ("G03")
+   else
+      post.Text ("G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY) * scale, "0.0000")
+   if wasRapid then
+--      post.Text (" FVA1")
+      wasRapid = false
+   end
+--   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+
+end
+
+function JetOn()
+   post.Text("G800 K0 D1")
+   post.NonModalNumber (" X", currentX * scale, "0.0000")
+   post.NonModalNumber (" Y", currentY * scale, "0.0000")
+   post.NonModalNumber (" Z", cutHeight * scale, "0.0000")
+--   post.Text(" FVA1")
+   post.Text(" T1 R1 U0 V0 W1 F(feed1)\n")
+end
+
+function JetOff()
+   post.Text("G831\n G840 L1\n")
+end
+
+function OnPenDown()
+   if lastClass ~= "" then
+      if lastClass == toolClass then
+         post.Text("G840\n")
+         post.Text("G180 X0 Y0 Z(workpiece_safe_dist)\n")
+         post.Text("G153 G0 Z(kine_z+head_safe_dist)\n")
+      else
+         post.Text("G840 L0 T0\n")
+         post.Text("G153 G0 Z(trav_safe_z)\n")
+      end
+   end
+   lastClass = toolClass
+   StartTrack()
+--   post.Text("G806 T1 H1 D1 I1\n")
+
+   post.Text("G180")
+   post.NonModalNumber (" X", currentX * scale, "0.0000")
+   post.NonModalNumber (" Y", currentX * scale, "0.0000")
+   post.Text(" Z(workpiece_safe_dist) " )
+   post.Text("\nG153 G0 X(kine_x) Y(kine_y)\n")
+--   post.Text("G153 G0 Z(kine_z)\n")
+
+--[[   local diffx = endX - currentX
+   local diffy = endY - currentY
+   if(diffx ~= 0 or diffy ~=0) then
+      local temp1 = curang
+      local temp2 = lastang
+      checkangle( math.atan2(diffx,diffy), false)
+      curang = temp1
+      lastang = temp2
+   end]]
+   JetOn()
+end
+
+function OnPenUp()
+end
+
+
+function OnNewPart()
+   post.Text(";Part: ",partName,"\n");
+end
+
+
+function OnFloodOn()
+   post.Text("M08\n")
+end
+
+function OnMistOn()
+   post.Text("M07\n")
+end
+
+function OnCoolantOff()
+   post.Text("M09\n")
+end
+
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end
+

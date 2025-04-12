@@ -1,0 +1,693 @@
+﻿<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>Post processor files are written in the Lua macro language http://www</title>
+  </head>
+  <body>
+    <p>Post processor files are written in the Lua macro language. See <a href="http://www.lua.org">http://www.lua.org</a>
+      and &nbsp;<a href="http://lua-users.org/wiki/LuaDirectory">http://lua-users.org/wiki/LuaDirectory</a>
+      <br>
+      The post is event based. Each event has a function associated with it.</p>
+    <p>The available events are:</p>
+    <h4>function OnAbout(event)</h4>
+    <ul>
+      <p>Occurs when the post details are displayed. <br>
+        The event is a wxOptionsEvent(see plugin documentation). A simple about
+        would look something like this: <br>
+        function OnAbout(event) <br>
+        ctrl = event:GetTextCtrl() <br>
+        ctrl:AppendText("My post processor\n") <br>
+        ctrl:AppendText("Another line\nYet another line") <br>
+        end</p>
+    </ul>
+    <h4>function OnInit()</h4>
+    <ul>
+      <p>Occurs when the output file is opened. <br>
+        Set the variable ‘bigarcs’ to 1 if you don’t want arcs to be output as
+        quadrants <font color="red"><b>* DEPRECATED * see SetOptions instead</b></font>
+        <br>
+        Set the variable ‘minarcsize’ to the minimum arc size in millimetres. If
+        arcs are less than this size they will be turned into moves instead.
+        Default value is 0.05mm </p>
+    </ul>
+    <h4>function OnNewLine()</h4>
+    <ul>
+      <p>Whenever a new line is written to the output file</p>
+    </ul>
+    <h4>function OnFinish()</h4>
+    <ul>
+      <p>Occurs just before the output file is closed.</p>
+    </ul>
+    <h4>function OnRapid()</h4>
+    <ul>
+      <p>Rapid linear move</p>
+    </ul>
+    <h4>function OnMove()</h4>
+    <ul>
+      <p>Linear move at feedrate</p>
+    </ul>
+    <h4>function OnArc()</h4>
+    <ul>
+      <p>Arc/helical move. See the arcasmoves() function if your machine cannot
+        handle arcs.</p>
+    </ul>
+    <h4>function OnDrill()</h4>
+    <ul>
+      <p>drill</p>
+    </ul>
+    <h4>function OnDrillStart()</h4>
+    <ul>
+      <p>Called just before drilling, after the toolchange.</p>
+    </ul>
+    <h4>function OnDrillEnd()</h4>
+    <ul>
+      <p>Called after drilling is finished, before OnNewOperation()</p>
+    </ul>
+    <h4>function OnAutoTap()</h4>
+    <ul>
+      <p>Tap with a tapmatic type automatic tapping head</p>
+    </ul>
+    <h4>function OnRigidTap()</h4>
+    <ul>
+      <p>Tap with a rigid tapping head</p>
+    </ul>
+    <h4>function OnTapStart()</h4>
+    <ul>
+      <p>Called just before tapping, after the toolchange.</p>
+    </ul>
+    <h4>function OnTapEnd()</h4>
+    <ul>
+      <p>Called after tapping is finished, before OnNewOperation()</p>
+    </ul>
+    <h4>function OnPenUp()</h4>
+    <ul>
+      <p>Z axis moves upward. Can be used to turn a plasma/laser off</p>
+    </ul>
+    <h4>function OnPenDown()</h4>
+    <ul>
+      <p>Z axis moves downwards. Can be used to turn a plasma/laser on</p>
+    </ul>
+    <h4>function OnSetFeed()</h4>
+    <ul>
+      <p>Feed rate change</p>
+    </ul>
+    <h4>function OnToolChange()</h4>
+    <ul>
+      <p>Tool change</p>
+    </ul>
+    <h4>function OnNewOperation()</h4>
+    <ul>
+      <p>Occurs when a new operation is started</p>
+    </ul>
+    <h4>function OnNewPart()</h4>
+    <ul>
+      <p>When a new part is started</p>
+    </ul>
+    <h4>function OnSpindleCW()</h4>
+    <ul>
+      <p>Turn the spindle on clockwise</p>
+    </ul>
+    <h4>function OnSpindleCCW()</h4>
+    <ul>
+      <p>Turn the spindle on anticlockwise</p>
+    </ul>
+    <h4>function OnSpindleOff()</h4>
+    <ul>
+      <p>Turn the spindle off</p>
+    </ul>
+    <h4>function OnSpindleChanged()</h4>
+    <ul>
+      <p>The spindle speed has changed</p>
+    </ul>
+    <h4>function OnFloodOn()</h4>
+    <ul>
+      <p>Turn flood coolant on</p>
+    </ul>
+    <h4>function OnMistOn()</h4>
+    <ul>
+      <p>Turn mist coolant on</p>
+    </ul>
+    <h4>function OnCoolantOff()</h4>
+    <ul>
+      <p>Turn coolant off</p>
+    </ul>
+    <h4>function OnComment()</h4>
+    <ul>
+      <p>Output a comment to the g-code file. See commenttext variable below.</p>
+    </ul>
+    <h4>function OnNewEntity()</h4>
+    <ul>
+      <p>Called at the start of a new cut. This occurs just before moving to the
+        start of the cut. See entitylength and entityclosed variables below.</p>
+    </ul>
+    <h4>function OnFileOpen()</h4>
+    <ul>
+      <p>Called just before the output file is opened. You can change the values
+        of the fileName and filePath variables if you wish to save to a
+        different file.</p>
+    </ul>
+    <h4>function OnFileClosed()</h4>
+    <ul>
+      <p>Called after the g-code file has been saved. Could be used to trigger
+        an external application to execute the code.<br>
+        In each event the following standard functions are available. Note that
+        they are in the post namespace so each should be preceded by 'post.'. <br>
+        For example post.Warning("This is a warning").</p>
+    </ul>
+    <h4>Message(text,[text],...)</h4>
+    <ul>
+      <p>All parameters are combined into one string and displayed on the
+        progress window.</p>
+    </ul>
+    <h4>Warning(text,[text],...)</h4>
+    <ul>
+      <p>All parameters are combined into one string and displayed on the
+        progress window as a warning.</p>
+    </ul>
+    <h4>Error(text,[text],...)</h4>
+    <ul>
+      <p>All parameters are combined into one string and displayed on the
+        progress window as an error.</p>
+    </ul>
+    <h4>Text(text,[text],...)</h4>
+    <ul>
+      <p>All parameters are output to the file. Line numbers are added to the
+        start of each line and empty lines are ignored</p>
+    </ul>
+    <h4>TextDirect(text,[text],...)</h4>
+    <ul>
+      <p>All parameters are output to the file. The text is not processed in any
+        way. No line numbers are added.</p>
+    </ul>
+    <h4>ModalText(text)</h4>
+    <ul>
+      <p>The text is output to the file unless the last call to modaltext
+        contained the same text<br>
+        Here is an example:<br>
+        modaltext(“G0”) - “G0” is output (the first call to modaltext() always
+        outputs the code)<br>
+        modaltext(“G0”) - nothing is output because the previous call was “G0”<br>
+        modaltext(“G1”) - “G1” is output because the previous call wasn't “G1”<br>
+        modaltext(“G1”) - nothing is output because the previous call was “G1”<br>
+        modaltext(“G83”) - “G83” is output because the previous call wasn't
+        “G83”<br>
+    </ul>
+
+
+    <h4>CancelModaltext()</h4>
+    <ul>
+        <p>The next call to modaltext will always output the text to the file. It
+        is functionally equivalent to modaltext(“”)</p>
+    </ul>
+    <h4>Number(number, format)</h4>
+    <ul>
+      <p>Output the number in the format specified by the format string. Number
+        can be any valid numeric expression<br>
+        The format string defines the number of leading and trailing zeros. <br>
+        The character '0' means that that digit must be output even if it is a
+        leading or trailing zero. <br>
+        The character '#' means that the digit will be output if it is not a
+        leading or trailing zero. <br>
+        A leading + indicated that the sigh should always be shown. <br>
+        For instance Number(2.5 "+0000.00") will output ‘+0002.50', Number (2.56
+        "0.#") will output '2.6' and Number(123.45 "0.") will output '123'<br>
+        Returns: The number as it was formatted. For instance:<br>
+        post.Number(123.456789,”0.00”)<br>
+        would output “123.46” and return the number 123.46. This is useful for
+        incremental posts.</p>
+    </ul>
+    <h4>FormatNumber(number, format)</h4>
+    <ul>
+      <p>Format a number using the format specified by the format string. <br>
+        Returns: A string containing the formatted number and the number as it
+        was formatted.<br>
+        For example a,b = post.FormatNumber(123.456,”+0.0”) would return:<br>
+        a = “+123.5”<br>
+        b = 123.5<br>
+        a = post.FormatNumber(123.456,”+0.0”) would return:<br>
+        a = “+123.5”</p>
+    </ul>
+    <h4>ModalNumber(text, number, format)</h4>
+    <ul>
+      <p>Text and number is output to the file if the number is different to the
+        last time ModalNumber was called with the same text. For example the
+        following code:<br>
+        ModalNumber " X" 10 "0.0##"<br>
+        ModalNumber " Y" 20 "0.0##"<br>
+        ModalNumber " X" 10 "0.0##"<br>
+        ModalNumber " Y" 21 "0.0##"<br>
+        ModalNumber " Y" 21 "0.0##"<br>
+        will output: ' X10 Y20 Y21'<br>
+        Returns: The number as it was formatted. If the number was not output
+        the return value is the value as it would have been output.</p>
+    </ul>
+    <h4>NonModalNumber(text, number, format)</h4>
+    <ul>
+      <p>like modalnumber() but text and number are always output. This keeps
+        track of modality if you wish to use modalnumber somewhere else.<br>
+        Returns: The number as it was formatted.</p>
+    </ul>
+    <h4>CancelModalNumbers()</h4>
+    <ul>
+      <p>This resets all modal numbers.<br>
+        for example the following code<br>
+        modalnumber " X" 10 "0.0##"<br>
+        cancelmodalnumbers()<br>
+        modalnumber " X" 10 "0.0##"<br>
+        will output ‘ X10 X10’</p>
+    </ul>
+    <h4>Eol()</h4>
+    <ul>
+      <p>Write an end of line to the file. This equivalent to text("\n")</p>
+    </ul>
+    <h4>SetCommentChars(source chars, replace chars)</h4>
+    <ul>
+      <p>if any source char is found in a filename or post name it is replaced
+        with the equivalent replace char. For instance if your post is called
+        "mypost(1).post" <br>
+        then the following code:<br>
+        post.SetCommentChars ("()", "[]")<br>
+        text “(postname)”<br>
+        will output 'mypost[1].post' to the file.</p>
+    </ul>
+    <h4>ArcAsMoves(Tolerance)</h4>
+    <ul>
+      <p>Perform the current arc as a series of short linear moves. This should
+        only be called from the onArc() event.<br>
+        Tolerance is the maximum deviation in millimetres from a true arc.All
+        other parameters are optional. Reducing Tolerance increases the number
+        of line segments generated.</p>
+    </ul>
+
+
+    <h4>SetEncoding(Encoding)</h4>
+    <ul>
+      <p>Set the file encoding. This overrides the option in options->machine->post processor and would normally be called from function OnInit()<br>
+      Encoding is one of :<br>
+<table>
+    <tr><td>wx.wxFONTENCODING_SYSTEM</td><td>system default</td></tr>
+    <tr><td>wx.wxFONTENCODING_DEFAULT</td><td>          current default encoding</td></tr>
+    <tr><td>wx.wxFONTENCODING_ISO8859_1</td><td>        West European (Latin1)</td></tr>
+    <tr><td>wx.wxFONTENCODING_ISO8859_2</td><td>        Central and East European (Latin2)</td></tr>
+    <tr><td>wx.wxFONTENCODING_ISO8859_3</td><td>        Esperanto (Latin3)</td></tr>
+    <tr><td>wx.wxFONTENCODING_ISO8859_4</td><td>        Baltic (old) (Latin4)</td></tr>
+    <tr><td>wx.wxFONTENCODING_ISO8859_5</td><td>        Cyrillic</td></tr>
+    <tr><td>wx.wxFONTENCODING_ISO8859_6</td><td>        Arabic</td></tr>
+    <tr><td>wx.wxFONTENCODING_ISO8859_7</td><td>        Greek</td></tr>
+    <tr><td>wx.wxFONTENCODING_ISO8859_8</td><td>        Hebrew</td></tr>
+    <tr><td>wx.wxFONTENCODING_ISO8859_9</td><td>        Turkish (Latin5)</td></tr>
+    <tr><td>wx.wxFONTENCODING_ISO8859_10</td><td>       Variation of Latin4 (Latin6)</td></tr>
+    <tr><td>wx.wxFONTENCODING_ISO8859_11</td><td>       Thai</td></tr>
+    <tr><td>wx.wxFONTENCODING_ISO8859_13</td><td>       Baltic (Latin7)</td></tr>
+    <tr><td>wx.wxFONTENCODING_ISO8859_14</td><td>       Latin8</td></tr>
+    <tr><td>wx.wxFONTENCODING_ISO8859_15</td><td>       Latin9 (a.k.a. Latin0, includes euro)</td></tr>
+    <tr><td>wx.wxFONTENCODING_KOI8</td><td>             KOI8 Russian</td></tr>
+    <tr><td>wx.wxFONTENCODING_KOI8_U</td><td>           KOI8 Ukrainian</td></tr>
+    <tr><td>wx.wxFONTENCODING_ALTERNATIVE</td><td>      same as MS-DOS CP866</td></tr>
+    <tr><td>wx.wxFONTENCODING_BULGARIAN</td><td>        used under Linux in Bulgaria</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP437</td><td>            original MS-DOS codepage</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP850</td><td>            CP437 merged with Latin1</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP852</td><td>            CP437 merged with Latin2</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP855</td><td>            another cyrillic encoding</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP866</td><td>            and another one and for Windows</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP874</td><td>            WinThai</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP932</td><td>            Japanese (shift-JIS)</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP936</td><td>            Chinese simplified (GB)</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP949</td><td>            Korean (Hangul charset)</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP950</td><td>            Chinese (traditional - Big5)</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP1250</td><td>           WinLatin2</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP1251</td><td>           WinCyrillic</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP1252</td><td>           WinLatin1</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP1253</td><td>           WinGreek (8859-7)</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP1254</td><td>           WinTurkish</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP1255</td><td>           WinHebrew</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP1256</td><td>           WinArabic</td></tr>
+    <tr><td>wx.wxFONTENCODING_CP1257</td><td>           WinBaltic (same as Latin 7)</td></tr>
+    <tr><td>wx.wxFONTENCODING_UTF7</td><td>             UTF-7 Unicode encoding</td></tr>
+    <tr><td>wx.wxFONTENCODING_UTF8</td><td>             UTF-8 Unicode encoding</td></tr>
+    <tr><td>wx.wxFONTENCODING_EUC_JP</td><td>           Extended Unix Codepage for Japanese</td></tr>
+    <tr><td>wx.wxFONTENCODING_UTF16BE</td><td>          UTF-16 Big Endian Unicode encoding</td></tr>
+    <tr><td>wx.wxFONTENCODING_UTF16LE</td><td>          UTF-16 Little Endian Unicode encoding</td></tr>
+    <tr><td>wx.wxFONTENCODING_UTF32BE</td><td>          UTF-32 Big Endian Unicode encoding</td></tr>
+    <tr><td>wx.wxFONTENCODING_UTF32LE</td><td>          UTF-32 Little Endian Unicode encoding</td></tr>
+</table>
+    </p>
+    </ul>
+
+
+    <h3>The following functions should only be called at post load time. </h3>
+    <p>This means that they should be outside any other function definition.</p>
+    <h4>DefineVariable(varName,units,min,max)</h4>
+    <ul>
+      <p>Define a variable name for use in the ‘set variable’ dialog.<br>
+        varName = variable name<br>
+        units. One of the following: sc.unitTEXT, sc.unitLINEAR, sc.unitANGULAR,
+        sc.unitFEED, sc.unitRPM, sc.unitTIME, sc.unitPERCENT, sc.unitPITCH, <br>
+        sc.unit0DECPLACE, sc.unit1DECPLACE, sc.unit2DECPLACE, ,sc.unit3DECPLACE,
+        sc.unit4DECPLACE sc.unitBOOLEAN note the unitxDECPLACE units display <br>
+        a number without units with a precision of the given number of decimal
+        places.<br>sc.UNITBOOLEAN shows a check box. The value can be 1 or 0.<br>
+        min minimum value (ignored for text)<br>
+        max maximum value (ignored for text)</p>
+    </ul>
+    <h4>DefineCustomOption(caption,varName,units,min,max, default)</h4>
+    <ul>
+      <p>Adds an option to the post options. <br>
+        caption is a label that is displayed next to the input box.<br>
+        The rest of the syntax is as DefineVariable above.</p>
+    </ul>
+    <h4>ShowCustomOptions(caption)</h4>
+    <ul>
+      <p>Show an options dialog containing the options defined using
+        DefineOption. <br>
+        Caption is displayed in the dialog box title.<br>
+        If no options have been defined this function has no effect.</p>
+    </ul>
+    <h4>DefineCustomToolParam(toolClass,caption,varName,units,default,min,max)</h4>
+    <ul>
+      <p>Adds an extra parameter to a tool definition. <br>
+        toolClass is the tool class name. See the toolClass variable for a
+        description of tool classes<br>
+        default is the default value. Note that values are always in METRIC for
+        linear units, RADIANS for angular units and a decimal fraction for
+        percentage e.g 0.1 = 10%<br>
+        The rest of the syntax is as DefineVariable above.</p>
+    </ul>
+    <h4>ForceExtension(extension)</h4>
+    <ul>
+      <p>Force the file extension. Extension should not include a leading dot.
+        This overrides the user’s selection<br>
+        e.g post.ForceExtension(“tap”)</p>
+    </ul>
+    <h4>SetOptions(option)</h4>
+    <ul>
+      <p>Set an option. The available options are:</p>
+      <ul>
+        <li>post.DISABLE_TOOLCHANGE Disable tool change options in SheetCam. The
+          post and machine handle all tool change moves</li>
+        <li> post.ARC_SEGMENTS Arcs should never exceed 180 degree</li>
+        <li>post.DISABLE_ROTARY Disable rotary cutting options</li>
+        <li>post.DISABLE_JET Disable jet cutting options</li>
+      </ul>
+      <p>To combine options add them. For instance:<br>
+        Post.SetOptions(post.DISABLE_TOOLCHANGE + post.DISABLE_ROTARY)</p>
+    </ul>
+    <h3>The following predefined variables are available:</h3>
+    <h4>currentX,currentY,currentZ</h4>
+    <ul>
+      <p>Current X,Y,Z coordinates.</p>
+    </ul>
+    <h4>endX,endY,endZ</h4>
+    <ul>
+      <p>X,Y,Z coordinates to move to. These variables are only valid for
+        movement events.</p>
+    </ul>
+    <h4>arcAngle</h4>
+    <ul>
+      <p>Angle of current circular move in radians. Positive = clockwise. 0 = 12
+        o'clock. This variable is only valid for circular moves</p>
+    </ul>
+    <h4>arcCentreX,arcCentreY</h4>
+    <ul>
+      <p>Center X,Y coordinates of current circular move. This variable is only
+        valid for circular moves</p>
+    </ul>
+    <h4>plungeSafety</h4>
+    <ul>
+      <p>Safe clearance above the cut start. Rapids should be down to this then
+        move at feed rate down to the cut start.</p>
+    </ul>
+    <h4>drillStart</h4>
+    <ul>
+      <p>drillling and tapping start depth</p>
+    </ul>
+    <h4>drillZ</h4>
+    <ul>
+      <p>drill and tapping depth</p>
+    </ul>
+    <h4>drillPeck</h4>
+    <ul>
+      <p>Drill peck depth</p>
+    </ul>
+    <h4>drillRetract</h4>
+    <ul>
+      <p>Drill retract amount</p>
+    </ul>
+    <h4>safeZ</h4>
+    <ul>
+      <p>Rapid height</p>
+    </ul>
+    <h4>materialTop</h4>
+    <ul>
+      <p>Z coordinate of material top (always 0)</p>
+    </ul>
+    <h4>feedRate</h4>
+    <ul>
+      <p>Current feed rate</p>
+    </ul>
+    <h4>plungeRate</h4>
+    <ul>
+      <p>Plunge rate for this tool. Use for verification purposes only -
+        feedrate is updated to reflect plunge rate when plunging.</p>
+    </ul>
+    <h4>inch</h4>
+    <ul>
+      <p>This variable is always 1/25.4</p>
+    </ul>
+    <h4>metric</h4>
+    <ul>
+      <p>This variable is always 1</p>
+    </ul>
+    <h4>scale</h4>
+    <ul>
+      <p>for inch post output this variable is 1/25.4 otherwise it is 1</p>
+    </ul>
+    <h4>tool</h4>
+    <ul>
+      <p>Current tool number</p>
+    </ul>
+    <h4>nextTool</h4>
+    <ul>
+      <p>The number of the next tool to be pre-selected. -1 if there are no more tools needed</p>
+    </ul>
+    <h4>line</h4>
+    <ul>
+      <p>Current line number</p>
+    </ul>
+    <h4>spindleSpeed</h4>
+    <ul>
+      <p>Current spindle speed</p>
+    </ul>
+    <h4>fileName</h4>
+    <ul>
+      <p>G-code file name</p>
+    </ul>
+    <h4>fileNameOnly</h4>
+    <ul>
+      <p>G-code file name without path</p>
+    </ul>
+    <h4>filePath</h4>
+    <ul>
+      <p>G-code file path</p>
+    </ul>
+    <h4>partName</h4>
+    <ul>
+      <p>Part name</p>
+    </ul>
+    <h4>toolName</h4>
+    <ul>
+      <p>Current tool name</p>
+    </ul>
+    <h4>operationName</h4>
+    <ul>
+      <p>Current operation name</p>
+    </ul>
+    <h4>date</h4>
+    <ul>
+      <p>date that post processing was started</p>
+    </ul>
+    <h4>time</h4>
+    <ul>
+      <p>time that post processing was started</p>
+    </ul>
+    <h4>postName</h4>
+    <ul>
+      <p>Post processor file name</p>
+    </ul>
+    <h4>preheat</h4>
+    <ul>
+      <p>preheat delay (flame tool only)</p>
+    </ul>
+    <h4>pierceDelay</h4>
+    <ul>
+      <p>pierce delay (jet tool only)</p>
+    </ul>
+    <h4>pierceHeight</h4>
+    <ul>
+      <p>pierce height (jet tool only)</p>
+    </ul>
+    <h4>cutHeight</h4>
+    <ul>
+      <p>cut height (jet tool only)</p>
+    </ul>
+    <h4>endDelay</h4>
+    <ul>
+      <p>end of cut delay (jet tool only)</p>
+    </ul>
+    <h4>power</h4>
+    <ul>
+      <p>Laser power (laser and waterjet tools only)</p>
+    </ul>
+    <h4>materialX1, materialY1</h4>
+    <ul>
+      <p>Bottom left coordinates of material</p>
+    </ul>
+    <h4>materialX2, materialY2</h4>
+    <ul>
+      <p>Top right of material</p>
+    </ul>
+    <h4>materialThick</h4>
+    <ul>
+      <p>Material thickness</p>
+    </ul>
+    <h4>materialHeight</h4>
+    <ul>
+      <p>Height of material above the table</p>
+    </ul>
+    <h4>toolDia</h4>
+    <ul>
+      <p>Tool diameter</p>
+    </ul>
+    <h4>toolLength</h4>
+    <ul>
+      <p>Tool length</p>
+    </ul>
+    <h4>toolFluteLength</h4>
+    <ul>
+      <p>Tool flute length</p>
+    </ul>
+    <h4>toolOffset</h4>
+    <ul>
+      <p>Tool length offset</p>
+    </ul>
+    <h4>toolAngle</h4>
+    <ul>
+      <p>Tool V angle or drill point angle in radians (only valid for V cutters
+        or drills). Multiply by 57.29577951308 to convert to degrees</p>
+    </ul>
+    <h4>toolType <font color="red">DEPRECATED - use toolClass instead</font></h4>
+    <ul>
+      <p>-1 = unknown<br>
+        0=mill/router<br>
+        1=drill<br>
+        2=V cutter<br>
+        3=plasma<br>
+        4=insert g-code<br>
+        5=automatic tap<br>
+        6=rigid tap<br>
+        7=flame<br>
+        8=water<br>
+        9=laser</p>
+    </ul>
+    <h4><b>toolClass</b></h4>
+    <ul>
+      <p>MillTool=mill/router<br>
+        DrillTool=drill<br>
+        VTool=V cutter<br>
+        PlasmaTool=plasma<br>
+        CodeTool=insert g-code<br>
+        TapHeadTooll=automatic tap<br>
+        TapTool=rigid tap<br>
+        FlameTool=flame<br>
+        WaterTool=water<br>
+        LaserTool=laser<br>
+        ThreadMillTool=Thread mill<br>
+        MarkerTool=Plate marker</p>
+    </ul>
+    <h4><b>operationClass</b></h4>
+    <ul>
+      <p>One of the following:<br>
+        <br>
+        VariableOperation<br>
+        MoveOperation<br>
+        CodeOperation<br>
+        JetOperation<br>
+        DrillOperation<br>
+        TapOperation<br>
+        ContourOperation<br>
+        PocketOperation<br>
+        ZigzagPocketOperation<br>
+        ThreadMillOperation<br>
+      </p>
+    </ul>
+    <h4>tapPitch</h4>
+    <ul>
+      <p>Tapping feed per rev. Only used by the autotap() and rigidtap() events</p>
+    </ul>
+    <h4>underFeed</h4>
+    <ul>
+      <p>Tapping underfeed. Only used by the autotap() and rigidtap() events.
+        0.5 = 50%, 1= 100% etc</p>
+    </ul>
+    <h4>tapTravel</h4>
+    <ul>
+      <p>Tapping head axial travel. Only used by autotap() event</p>
+    </ul>
+    <h4>reverseMult</h4>
+    <ul>
+      <p>Tapping head reverse multiplier. Only used by autotap() event</p>
+    </ul>
+    <h4>commentText</h4>
+    <ul>
+      <p>Text for the comment() event</p>
+    </ul>
+    <h4>entityLength</h4>
+    <ul>
+      <p>length of the next cut path</p>
+    </ul>
+    <h4>entityClosed</h4>
+    <ul>
+      <p>1 if the cut path is closed, 0 if it is open.</p>
+    </ul>
+    <h4>leadinType</h4>
+    <ul>
+      <p>Defines if this is a leadin/leadout<br>
+      0: Not a leadin/leadout.<br>
+      1: A leadin.<br>
+      2: A leadout.<br></p>
+    </ul>
+    <h4>spindleDir</h4>
+    <ul>
+      <p>-1 = CCW, 0 = off, 1 = CW</p>
+    </ul>
+    <h4>partIndex</h4>
+    <ul>
+      <p>the index(starting from 0) of the current part</p>
+    </ul>
+    <h4>operationIndex</h4>
+    <ul>
+      <p>the index(starting from 0) of the current operation</p>
+    </ul>
+    <h4>cutDepth</h4>
+    <ul>
+      <p>The depth of cut. 0 if the tool does not exist or this operation does
+        not use a tool.</p>
+    </ul>
+    <h4>Variables</h4>
+    <p>All of SheetCam's internal variables are available in the var namespace. For instance :</p>
+    <p><b>var.ClampClearanceHeight</b> would give the material thickness. You can see all of the available variables using the variable monitor (View->variable monitor)</p>
+    <h3>The following Lua libraries are included: </h3>
+    <p><b>math</b>. See <a href="http://lua-users.org/wiki/MathLibraryTutorial">http://lua-users.org/wiki/MathLibraryTutorial</a>
+      for more details. This library has been extended to add the following
+      functions:</p>
+    <p><b>math.hypot(x,y)</b>. This is equivalent to math.sqrt((x*x) + (y*y))<br>
+      <b>math.toint(n)</b>. Returns the integer value of n.</p>
+    <p><b>string</b>. See <a href="http://lua-users.org/wiki/StringsTutorial">http://lua-users.org/wiki/StringsTutorial</a>
+      for more details.</p>
+    <p><b>os</b> See<a href="http://lua-users.org/wiki/OsLibraryTutorial">http://lua-users.org/wiki/OsLibraryTutorial</a>
+      for more details</p>
+    <p>Also all of the <a href="http://wxlua.sourceforge.net/documentation.php">wxLua</a>
+      plugin functions are available. See the plugin documentation.</p>
+    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+  </body>
+</html>

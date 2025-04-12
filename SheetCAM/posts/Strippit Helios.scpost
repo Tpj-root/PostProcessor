@@ -1,0 +1,123 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Strippit Helios laser post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--  modified 3/2/07 
+--  Removed final safety move. This is now done in SheetCam
+
+
+post.ForceExtension("pgm")
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   
+--[[   post.Text ("(Filename: ", fileName, ")\n")
+   post.Text ("(Post processor: ", postName, ")\n")
+   post.Text ("(Date: ", date, ")\n")]]
+   post.Text("G900P101050001\n")
+   post.Text("M75X0.0000Y0.0000")
+   if(scale == metric) then
+      post.Text ("G21\n") --metric mode
+   else
+      post.Text ("G20\n") --inch mode
+   end
+   post.Text ("G40\nG90\nG66\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+function OnFinish()
+   post.Text ("G940\n")
+   post.Text ("M99\n")
+end
+
+function OnRapid()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   if(endX > 1e30) then return end
+   post.ModalText ("G00")
+   post.ModalNumber ("X", endX * scale, "0.0000")
+   post.ModalNumber ("Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.ModalText ("G01")
+   post.ModalNumber ("X", endX * scale, "0.0000")
+   post.ModalNumber ("Y", endY * scale, "0.0000")
+   post.ModalNumber ("F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText ("G03")
+   else
+      post.ModalText ("G02")
+   end
+   post.ModalNumber ("X", endX * scale, "0.0000")
+   post.ModalNumber ("Y", endY * scale, "0.0000")
+   post.Text ("I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text ("J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber ("F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if (preheat > 0) then
+      post.Text ("G04 P")
+      post.Number (preheat,"0.0##")
+      post.Eol()
+   end
+   post.Text("G911\n")
+   post.Text("G931\n")
+   if (pierceDelay > 0) then
+      post.Text ("G04 P")
+      post.Number (pierceDelay,"0.0##")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   post.Text ("G942\n")
+   if (endDelay > 0) then
+      post.Text ("G04 P")
+      post.Number (endDelay,"0.0##")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+--   post.Text ("(Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text("(",commentText,")\n")
+end
+
+function OnToolChange()
+end
+
+
+function OnNewPart()
+--   post.Text("(Part: ",partName,")\n");
+end
+
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   OnPenUp()
+end

@@ -1,0 +1,214 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Allen Bradley 8400 Waterjet\n")
+   ctrl:AppendText("With optional 3 head support\n")
+   ctrl:AppendText("Tools 1-99 use all 3 heads\n")
+   ctrl:AppendText("Tools 100+ switch between heads, depending on position")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ has been commented out\n")
+end
+
+
+--  modified 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+
+headSpacing = 30 * 25.4
+xMin = -0.01
+xMax = 30.01 * 25.4
+
+--first head. successive heads add one to each M code
+head1On = 11
+head1Off = 21
+
+numHeads = 3
+
+
+allHeadsOn = "M15"
+allHeadsOff = "M25"
+
+
+
+function OnInit()
+   lineNumber = 10
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+
+   post.Text (" ;(Filename: ", fileName, ")\n")
+   post.Text (" ;(Post processor: ", postName, ")\n")
+   post.Text (" ;(Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G71 ;(Units: Metric)\n") --metric mode
+   else
+      post.Text (" G70 ;(Units: Inches)\n") --inch mode
+   end
+   post.Text (" ;G40\n G90\n G17\n")
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   post.Text (" G00 F100.\n")
+   post.Text (" G99\n")
+   post.Text (" X0. Y0.\n")
+   post.Text (" G66\n")
+   post.Text (" G25 X0. Y0. I1. J1. H1 E2\n")
+   post.Text (" X0. Y0.\n")
+   post.Text (" M30N\n")
+   post.Text (" N1G92 X0.Y0.\n")
+   headOn = allHeadsOn
+   headOff = allHeadsOff
+   headOffset = -1e17
+   headDown = false
+   needRapid = false
+end
+
+function OnNewLine()
+   --post.Text ("N")
+   --post.Number (lineNumber, "0000")
+   --lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   if headDown then 
+      PenUp()
+   end
+   post.Text (" M25\n")
+   post.Text (" G99\n")
+   post.Text (" N2M2\n")
+end
+
+function CheckHead()
+   local hOffset
+   local hOn
+   local hOff
+   
+   if(tool < 100) then
+      hOffset = 0
+      hOn = allHeadsOn
+      hOff = allHeadsOff
+   else 
+      local head
+      for hd=0, numHeads -1 do
+         local sx = currentX - (hd * headSpacing)
+         local ex = endX - (hd * headSpacing)
+--post.Text("sx = " .. sx .. " ex = " .. ex .." xMin " .. xMin .. " xMax " .. xMax .." \n")
+         if sx >= xMin and sx <= xMax and ex >=xMin and ex <= xMax then
+            head = hd
+            break
+         end
+      end
+      if head == nil then
+         post.Error("Movement Exceeds machine's limits")
+      end
+      hOffset = head * headSpacing
+      hOn = "M" .. head1On + head
+      hOff = "M" .. head1Off + head
+   end
+   if hOffset ~= headOffset or needRapid then
+      if headDown then
+         PenUp()
+      end
+      headOffset = hOffset
+      headOn = hOn
+      headOff = hOff
+      post.Text (" G00")
+      post.ModalNumber (" X", (currentX - headOffset) * scale, "0.0000")
+      post.ModalNumber (" Y", currentY * scale, "0.0000")
+      post.Eol()
+      PenDown()
+      needRapid = false
+   end      
+end
+
+function OnRapid()
+   needRapid = true
+end
+
+--[[function Rapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   CheckHead()
+
+   post.Text (" G00")
+   post.ModalNumber (" X", (endX - headOffset) * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end]]
+
+function OnMove()
+   if(currentX == endX and currentY == endY) then return end
+   CheckHead()
+   post.Text (" G01")
+   post.ModalNumber (" X", (endX - headOffset) * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   CheckHead()
+   if(arcAngle <0) then
+      post.Text (" G03")
+   else
+      post.Text (" G02")
+   end
+   post.ModalNumber (" X", (endX - headOffset) * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - headOffset) * scale, "0.0000")
+   --post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY) * scale, "0.0000")
+   --post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function PenDown()
+   if (preheat > 0) then
+      post.Text (" G04 F")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+        
+   
+   post.Text (" " .. headOn .."\n")
+   if (pierceDelay > 0) then
+      post.Text (" G04 F")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+   headDown = true
+end
+
+
+function PenUp()
+   post.Text (" " .. headOff .."\n")
+   if (endDelay > 0) then
+      post.Text (" G04 F")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+   headDown = false
+end
+
+
+function OnNewOperation()
+   post.Text (" ;(Operation: ", operationName, ")\n")
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(" ;(",commentText,")\n")
+end
+
+function OnToolChange()
+end
+
+
+function OnNewPart()
+   post.Text(" ;(Part: ",partName,")\n");
+end

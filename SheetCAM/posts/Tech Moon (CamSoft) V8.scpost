@@ -1,0 +1,147 @@
+numFormat = "0.00000"
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Tech Moon waterjet post processor\n")
+end
+
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G53 G90 G40\n S500\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M30\n")
+end
+
+function OnRapid()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, numFormat)
+   post.ModalNumber (" Y", endY * scale, numFormat)
+   post.ModalNumber (" Z", endZ * scale, numFormat)
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, numFormat)
+   post.ModalNumber (" Y", endY * scale, numFormat)
+   post.ModalNumber (" Z", endZ * scale, numFormat)
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, numFormat)
+   post.NonModalNumber (" Y", endY * scale, numFormat)
+   post.ModalNumber (" Z", endZ * scale, numFormat)
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, numFormat)
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, numFormat)
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+--[[   if (preheat > 0.001) then
+      post.ModalText (" G00")
+      post.ModalNumber (" Z", cutHeight * scale, numFormat)
+      post.Text ("\n G04 L")
+      post.Number (preheat,"0.0##")
+      post.Eol()
+   end]]
+   post.ModalText (" G00")
+   post.ModalNumber (" Z", pierceHeight * scale, numFormat)
+--   post.Text ("\n M104\n")
+--   post.Text (" G04 L0.25\n M106\n")
+--   post.Text (" G04 L0.25\n M108\n")
+
+   post.Text(" M140 (High Pressure On)\n")
+   post.Text(" M142 (Cutting Head On)\n")
+   post.Text(" M8 (Abrasive On)\n")
+
+
+   if (pierceDelay > 0.001) then
+      post.Text (" G04 L")
+      post.Number (pierceDelay,"0.0##")
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   post.Text(" M9 (Abrasive Off)\n")
+   post.Text(" M143 (Cutting Head Off)\n")
+   post.Text(" M141 (High Pressure Off)\n")
+--   post.Text (" M109\n")
+--   post.Text (" M107\n")
+--   post.Text (" M105\n")
+   if (endDelay > 0) then
+      post.Text (" G04 L")
+      post.Number (endDelay,"0.0##")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   post.Text (" M06 T")
+   post.Number (tool, "0")
+   post.ModalNumber(" F",feedRate * scale,"0.0###")
+   post.Text ("  (", toolName, ")\n")
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

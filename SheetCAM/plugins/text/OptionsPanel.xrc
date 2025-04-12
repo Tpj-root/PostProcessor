@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<resource xmlns="http://www.wxwidgets.org/wxxrc">
+	<object class="wxPanel" name="OptionsPanel">
+		<object class="wxBoxSizer">
+			<orient>wxVERTICAL</orient>
+			<object class="sizeritem">
+				<object class="wxBoxSizer">
+					<object class="sizeritem">
+						<object class="wxButton" name="ID_BTNNEW">
+							<label>New</label>
+						</object>
+						<flag>wxALIGN_TOP</flag>
+						<border>2d</border>
+					</object>
+					<object class="sizeritem">
+						<object class="wxButton" name="ID_BTNCREATE">
+							<label>Add to current part</label>
+						</object>
+						<flag>wxALIGN_TOP</flag>
+					</object>
+					<object class="sizeritem">
+						<object class="wxButton" name="ID_BTNDELETE">
+							<label>Delete</label>
+						</object>
+						<flag>wxALIGN_TOP</flag>
+						<border>2d</border>
+					</object>
+				</object>
+				<flag>wxALL|wxALIGN_LEFT</flag>
+				<border>2d</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxPanel" name="ID_PNLOPTIONS">
+					<object class="wxBoxSizer">
+						<orient>wxVERTICAL</orient>
+						<object class="sizeritem">
+							<object class="wxFlexGridSizer">
+								<cols>2</cols>
+								<vgap>1d</vgap>
+								<hgap>3d</hgap>
+								<object class="sizeritem">
+									<object class="wxStaticText" name="ID_STATICTEXT2">
+										<label>Layer</label>
+									</object>
+									<flag>wxALL|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+								</object>
+								<object class="sizeritem">
+									<object class="wxTextCtrl" name="ID_TXTLAYER">
+										<tooltip>Layer to insert text into</tooltip>
+									</object>
+									<flag>wxALL|wxEXPAND</flag>
+								</object>
+								<object class="sizeritem">
+									<object class="wxStaticText" name="ID_STATICTEXT1">
+										<label>Font</label>
+									</object>
+									<flag>wxALL|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+								</object>
+								<object class="sizeritem">
+									<object class="wxBoxSizer">
+										<object class="sizeritem">
+											<object class="wxChoice" name="ID_CHFONT">
+												<style>wxCB_SORT</style>
+											</object>
+											<flag>wxALL|wxEXPAND</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxButton" name="ID_BTFILE">
+												<label>...</label>
+												<size>30,-1</size>
+												<tooltip>Import file</tooltip>
+											</object>
+											<flag>wxALL|wxALIGN_CENTER_VERTICAL</flag>
+										</object>
+									</object>
+									<flag>wxALL|wxEXPAND</flag>
+								</object>
+							</object>
+							<flag>wxALL|wxEXPAND</flag>
+							<border>2d</border>
+						</object>
+						<object class="sizeritem">
+							<object class="wxStaticBoxSizer">
+								<label>Size/Position</label>
+								<orient>wxVERTICAL</orient>
+								<object class="sizeritem">
+									<object class="wxFlexGridSizer">
+										<cols>2</cols>
+										<vgap>1d</vgap>
+										<hgap>3d</hgap>
+										<object class="sizeritem">
+											<object class="wxStaticText" name="ID_STATICTEXT3">
+												<label>Height</label>
+											</object>
+											<flag>wxALL|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxTextCtrl" name="ID_TXHEIGHT" subclass="UnitCtrl">
+												<tooltip>Height of a standard upper case character</tooltip>
+											</object>
+											<flag>wxALL|wxEXPAND</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxStaticText" name="ID_STATICTEXT4">
+												<label>Compression</label>
+											</object>
+											<flag>wxALL|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxTextCtrl" name="ID_TXCOMPRESSION" subclass="UnitCtrl" />
+											<flag>wxALL|wxEXPAND</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxStaticText" name="ID_STATICTEXT5">
+												<label>Horizontal spacing</label>
+											</object>
+											<flag>wxALL|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxTextCtrl" name="ID_TXHSPACING" subclass="UnitCtrl">
+												<tooltip>Character spacing</tooltip>
+											</object>
+											<flag>wxALL|wxEXPAND</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxStaticText" name="ID_STATICTEXT6">
+												<label>Vertical spacing</label>
+											</object>
+											<flag>wxALL|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxTextCtrl" name="ID_TXVSPACING" subclass="UnitCtrl">
+												<tooltip>Line spacing</tooltip>
+											</object>
+											<flag>wxALL|wxEXPAND</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxStaticText" name="ID_STATICTEXT7">
+												<label>Slope</label>
+												<hidden>1</hidden>
+											</object>
+											<flag>wxALL|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxTextCtrl" name="ID_TXSLOPE" subclass="UnitCtrl">
+												<enabled>0</enabled>
+												<hidden>1</hidden>
+											</object>
+											<flag>wxALL|wxEXPAND</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxStaticText" name="ID_STATICTEXT8">
+												<label>Rotation</label>
+											</object>
+											<flag>wxALL|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxTextCtrl" name="ID_TXROTATION" subclass="UnitCtrl">
+												<tooltip>Text angle</tooltip>
+											</object>
+											<flag>wxALL|wxEXPAND</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxStaticText" name="ID_STATICTEXT9">
+												<label>X</label>
+											</object>
+											<flag>wxALL|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxTextCtrl" name="ID_TXTPOSX" subclass="UnitCtrl" />
+											<flag>wxALL|wxEXPAND</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxStaticText" name="ID_STATICTEXT10">
+												<label>Y</label>
+											</object>
+											<flag>wxALL|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+										</object>
+										<object class="sizeritem">
+											<object class="wxTextCtrl" name="ID_TXTPOSY" subclass="UnitCtrl" />
+											<flag>wxALL|wxEXPAND</flag>
+										</object>
+									</object>
+									<flag>wxALL|wxEXPAND</flag>
+									<option>1</option>
+								</object>
+							</object>
+							<flag>wxALL|wxEXPAND</flag>
+							<border>2d</border>
+						</object>
+						<object class="sizeritem">
+							<object class="wxStaticBoxSizer">
+								<label>Alignment</label>
+								<object class="sizeritem">
+									<object class="wxPanel" name="ID_PNLALIGN">
+										<object class="wxBoxSizer" />
+									</object>
+									<flag>wxALL|wxEXPAND</flag>
+								</object>
+							</object>
+							<flag>wxALL|wxEXPAND</flag>
+							<border>2d</border>
+						</object>
+						<object class="sizeritem">
+							<object class="wxTextCtrl" name="ID_TXTEXT">
+								<size>-1,150</size>
+								<tooltip>Enter your text here</tooltip>
+								<style>wxTE_PROCESS_ENTER|wxTE_PROCESS_TAB|wxTE_MULTILINE|wxHSCROLL</style>
+							</object>
+							<flag>wxALL|wxEXPAND</flag>
+							<border>2d</border>
+							<option>1</option>
+						</object>
+					</object>
+				</object>
+				<flag>wxEXPAND</flag>
+				<border>2d</border>
+			</object>
+		</object>
+	</object>
+</resource>

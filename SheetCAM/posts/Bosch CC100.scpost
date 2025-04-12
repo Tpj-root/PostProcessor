@@ -1,0 +1,146 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Bosch CC100 laser post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("No comments\n")
+   ctrl:AppendText("No Z\n")
+   ctrl:AppendText("Absolute IJ\n")
+   ctrl:AppendText("M15/M16 turn air on/off\n")
+   ctrl:AppendText("M11/M12 turn laser on/off\n")
+end
+
+
+
+--   created 23/02/07
+--   Based on WinCNC plasma V3.post
+
+post.DefineCustomOption("Program number","progNumber",sc.unit0DECPLACE,0,99)
+
+function OnInit()
+   post.ShowCustomOptions();
+--   if(scale == metric) then
+--      post.Text ("G22 [Units: Metric]\n") --metric mode
+--   else
+--      post.Text ("G20 [Units: Inches]\n") --inch mode
+--   end
+   post.TextDirect("\18\2\n")
+   
+   file = fileNameOnly:gsub(" ", "-")
+   file = file:sub(1,16)
+   while file:len() < 16 do
+      file = file .. " "
+   end
+   
+   prog = string.format("%i",progNumber)
+   prog = prog:sub(1,2)
+   while prog:len() < 2 do
+      prog = " " .. prog
+   end
+   
+   post.TextDirect("   PROGRAM   ", prog, "   ", file, "  M  RWED   4\n")
+   post.Text ("G92 X0.0 Y0.0\nG90\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   post.Text("        ")
+end
+
+
+function OnFinish()
+   endX = 0
+   endY = 0
+   OnRapid()
+   post.Text ("M30\n")
+   post.TextDirect ("        \3\n\4\n\20\n\n");
+end
+
+function OnRapid()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   if(endX > 1e30) then return end
+   post.Text ("G0")
+   post.NonModalNumber (" X", endX * scale, "0.0###")
+   post.NonModalNumber (" Y", endY * scale, "0.0###")
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.Text ("G1")
+   post.NonModalNumber (" X", endX * scale, "0.0###")
+   post.NonModalNumber (" Y", endY * scale, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text ("G3")
+   else
+      post.Text ("G2")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0###")
+   post.NonModalNumber (" Y", endY * scale, "0.0###")
+   post.Text (" I")
+   post.Number (arcCentreX * scale, "0.0###")
+   post.Text (" J")
+   post.Number (arcCentreY * scale, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if (pierceDelay > 0.001) then
+      post.Text ("G04 F")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+   post.Text ("M15\nM11\n")
+
+end
+
+
+function OnPenUp()
+   post.Text ("M12\nM16\n")
+end
+
+function OnNewOperation()
+--   post.Text ("[Operation: ", operationName, "]\n")
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+--  post.Text("[",commentText,"]\n")
+end
+
+function OnSpindleChanged()
+
+end
+
+function OnToolChange()
+--   text ("M6 T")
+--   number (tool, "0")
+--   text (" [", toolname, "]\n")
+end
+
+function OnNewPart()
+--   post.Text("[Part: ",partName,"]\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

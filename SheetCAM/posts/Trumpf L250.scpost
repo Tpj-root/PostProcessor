@@ -1,0 +1,112 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Post processor for Trumpf L250 laser\n")
+   ctrl:AppendText("\n")
+end
+
+
+
+--   created 2/8/06
+--   Based on plasma1.post
+
+
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   firstmove = 1
+   firsttool = 1
+   useapproach = 1
+end
+
+function OnNewLine()
+end
+
+
+function OnFinish()
+   post.Text ("Q26\n")
+   post.Text ("M30\n")
+end
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText ("G00")
+   post.ModalNumber (" X", endX * scale, "0.0###")
+   post.ModalNumber (" Y", endY * scale, "0.0###")
+   post.Eol()
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   checkmove()
+   post.ModalText ("G01")
+   post.ModalNumber (" X", endX * scale, "0.0###")
+   post.ModalNumber (" Y", endY * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   checkmove()
+   if(arcAngle <0) then
+      post.ModalText ("G03")
+   else
+      post.ModalText ("G02")
+   end
+   post.ModalNumber (" X", endX * scale, "0.0###")
+   post.ModalNumber (" Y", endY * scale, "0.0###")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0###")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0###")
+   post.Eol()
+end
+
+
+function checkmove()
+   if (firstmove == 3) then
+      return
+   end
+   if (firstmove == 1) then
+      firstmove = 2
+      return
+   end
+
+   post.Text("G801[")
+   post.Number( tool -1,"0000000")
+   post.Text("]\n")
+   firstmove = 3
+end
+
+function OnPenDown()
+   post.Text("G801[")
+   if(useapproach == 1) then
+      firstmove = 1
+   else
+      firstmove = 3
+   end
+   post.Number( tool, "0000000")
+   post.Text("]\n")
+   post.Text ("Q24\n")
+end
+
+
+function OnPenUp()
+   post.Text ("Q28\n")
+end
+
+function OnToolChange()
+   if (firsttool ~= 1) then return end
+   firsttool = 2
+   post.Text("%\n(DFS,P", string.sub(os.date("%y%m%d%H%M"),2))
+   post.Text(",", fileNameOnly,")\n")
+   post.Text ("/Q20\nG54\n")
+   if(scale == metric) then
+      post.Text ("G71\n") --metric mode
+   else
+      post.Text ("G70\n") --inch mode
+   end
+end
+
+

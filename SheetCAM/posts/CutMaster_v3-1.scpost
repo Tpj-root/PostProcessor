@@ -1,0 +1,240 @@
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("CutMaster post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M03/M05 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("The torch is referenced at cut start and every 50mm of movement thereafter\n")
+   ctrl:AppendText("Designed for use with Mach2 and Campbell Designs THC300\n")
+   ctrl:AppendText("Post variables:\n")
+   ctrl:AppendText("refdistance - set the distance between each reference\n")
+   ctrl:AppendText("slowradius - slow down below this radius\n")
+   ctrl:AppendText("slowspeed - minimum percentage to slow down\n")
+end
+
+
+
+--  revision 23/7/07
+--  Added corner slowdown and THC on/off
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   revision 7/10/05
+--   Added new arc handling
+
+--   created 27/10/04
+--   Based on plasma1.post
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G53 G90 G40\n G00 Z40 F20000\n")
+   thcstate = 1
+   thcoff()
+   mcode = "M03"
+
+
+   dist = 9999999
+   refdistance = 50 * scale
+   switchoffset = 0
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+
+   slowradius1 = 100 * scale
+   slowspeed1 = 0.95 * scale
+   slowradius2 = 60 * scale
+   slowspeed2 = 0.85 * scale
+   slowradius3 = 40 * scale
+   slowspeed3 = 0.75 * scale
+   slowradius4 = 20 * scale
+   slowspeed4 = 0.65 * scale
+   slowradius5 = 0.0 * scale
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M05 M30\n")
+end
+
+function OnRapid()
+   dist = dist + math.hypot(endX-currentX , endY-currentY)
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", endZ * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   dist = dist + math.hypot(endX-currentX , endY-currentY)
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", endZ * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+   post.CancelModaltext()
+   post.CancelModalNumbers()
+end
+
+function OnArc()
+
+   dist = dist + math.hypot(endX-currentX , endY-currentY)
+   radius = math.hypot(endX - arcCentreX,endY-arcCentreY) * scale
+   if (radius < slowradius1 and radius >= slowradius2) and (math.abs(arcAngle) > 0.1) then
+      feed = slowspeed1 * feedRate
+   elseif (radius < slowradius2 and radius >= slowradius3) and (math.abs(arcAngle) > 0.1) then
+      feed = slowspeed2 * feedRate
+   elseif (radius < slowradius3 and radius >= slowradius4) and (math.abs(arcAngle) > 0.1) then
+      feed = slowspeed3 * feedRate
+   elseif (radius < slowradius4 and radius >= slowradius5) and (math.abs(arcAngle) > 0.01) then
+      feed = slowspeed4 * feedRate
+   else
+      feed = feedRate
+   end
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", endZ * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feed * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+
+   post.ModalText(" G00 Z30")
+   post.Eol()
+   post.ModalText(" M7")
+   post.Eol()
+   post.ModalText(" G31 Z -30")
+   post.ModalNumber (" F", 500 * scale, "0.0###")
+   post.Eol()
+   if (tool >= 0) and (tool < 70) then
+      post.ModalText(" G92 Z23")
+   elseif (tool >= 70) and (tool < 160) then
+      post.ModalText(" G92 Z17.5")
+   else
+      post.ModalText(" G92 Z11.5")
+   end
+   post.CancelModalNumbers()
+   post.Eol()
+   post.ModalText(" M9")
+   post.Eol()
+   post.ModalText (" G00")
+   post.ModalNumber (" Z", pierceHeight * scale, "0.0000")
+   post.Eol()
+   if (preheat > 0) then
+      post.Text ("\n G04 P")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end
+   post.Text ("\n " .. mcode .. "\n")
+   post.CancelModalNumbers()
+   if ((pierceDelay > 0) and (tool >= 102)) then
+      post.ModalText(" G91 G02 X0 Y0 I -0.25 J -0.25 ")
+      post.ModalNumber (" Z", cutHeight * scale, "0.0000")
+      post.ModalNumber (" F", 188 / pierceDelay * scale, "0.0###")
+      post.CancelModaltext()
+      post.Eol()
+      post.ModalText (" G90")
+      post.Eol()
+   else
+      post.Text (" G04 P")
+      post.Number (pierceDelay,"0.###")
+      post.Eol()
+   end
+   thcstate = 2 --leave THC off for plunge move
+end
+
+function thcoff()
+   if(thcstate ==1) then
+      thcstate = 0
+      post.Text(" M666 (THC off)\n")
+   end
+end
+
+function thcon()
+   if(thcstate ==0) then
+      thcstate = 1
+      post.Text(" M667 (THC on)\n")
+      return
+   end
+   if(thcstate == 2) then
+      thcstate = 0
+   end
+end
+
+
+function OnPenUp()
+   thcoff()
+   post.Text (" M05\n")
+   if (endDelay > 0) then
+      post.Text (" G04 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   post.Text (" M06 T")
+   post.Number (tool, "0")
+   post.Text ("  (", toolName, ")\n")
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnDrill()
+   mcode = "M04"
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+   mcode = "M03"
+end

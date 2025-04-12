@@ -1,0 +1,121 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Post processor for Laserbalde with Fanuc controller\nn")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Tools 0-99 use O2\n")
+   ctrl:AppendText("Tools 100 - 199 use N2\n")
+   ctrl:AppendText("Tools 200 - 299 use high pressure N2\n")
+--   ctrl:AppendText("Tools 300 - 399 use O2 for pierce, N2 for cutting\n")
+   ctrl:AppendText("Uses absolute arcs\n")
+
+end
+
+
+
+--   created 7/12/09
+
+
+
+function OnInit()
+   post.Text("%\nO0000\n")
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   post.Text("G90\n")
+   if(scale == metric) then
+      post.Text ("G21\n") --metric mode
+   else
+      post.Text ("G20\n") --inch mode
+   end
+   post.Text("M53\n")
+   shutterOpen = false
+end
+
+
+
+function OnFinish()
+   post.Text ("M53\n")
+   post.Text ("M30\n%\n")
+end
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   if(endX >= 1e17) then return end
+   if(endX ~= currentX or endY ~= currentY) then
+      post.Text ("G00")
+      post.NonModalNumber (" X", endX * scale, "0.0###")
+      post.NonModalNumber (" Y", endY * scale, "0.0###")
+      post.Eol()
+   end
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.Text ("G01")
+   post.NonModalNumber (" X", endX * scale, "0.0###")
+   post.NonModalNumber (" Y", endY * scale, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text ("G03")
+   else
+      post.Text ("G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0###")
+   post.NonModalNumber (" Y", endY * scale, "0.0###")
+   post.Text (" I")
+   post.Number (arcCentreX * scale, "0.0###")
+--   post.Number ((arcCentreX - currentX) * scale, "0.0###")
+   post.Text (" J")
+   post.Number (arcCentreY * scale, "0.0###")
+--   post.Number ((arcCentreY - currentY) * scale, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+
+
+function OnPenDown()
+   post.Text("M52\n")
+end
+
+
+function OnPenUp()
+   post.Text("M53 Z")
+   post.Number(safeZ, "0.0###")
+   post.Eol()
+   if (endDelay > 0) then
+      post.Text (" G04 F")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+function OnNewPart()
+--   post.Text(" (Part: ",partName,")\n");
+end
+
+function OnToolChange()
+   if(tool <100) then
+      post.Text("M07\n") -- Use O2
+   else
+      if(tool < 200) then
+         post.Text("M08\n") -- N2
+      else
+         if(tool < 300) then
+            post.Text("M09\n") --use HP N2
+         else
+            post.Text("M07\n") --use O2
+         end
+      end
+   end
+   post.Text("M62\n")
+   if not shutterOpen then
+      shutterOpen = true
+      post.Text("M03\n")
+   end
+
+end

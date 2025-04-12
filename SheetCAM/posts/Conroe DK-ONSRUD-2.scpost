@@ -1,0 +1,310 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("KOMO Mach1s post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("Uses G83 Pecking Cycle for Drilled Holes\n")
+   ctrl:AppendText("Uses G81 Cycle for Drilled Holes with same peck depth as cut depth\n")
+end
+
+-- Rev 1
+
+-- EDITED for CST Covers 6-13-2019
+-- Davin Korunka
+
+function OnInit()
+   OnNewLine = nil
+   post.Text("\n")
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text ("N01 ;(", fileName, ")\n")
+--   post.Text (" ;(Post processor: ", postName, ")\n")
+   post.Text (" ;(Date ",date," Time ",time,")\n")
+   post.Text ("; (Spoilboard Min. Thickness  ",materialHeight * scale, ")\n")
+   post.Text ("; (Align Plate At  X", materialX1 * scale, " Y", materialY1 * scale, ")\n")
+   post.Text (" ;(Material Size  ", (materialX2 - materialX1) * scale ,"in Long by ", (materialY2 - materialY1) * scale, "in Wide", ")\n")
+   post.Text (" ;(Material Thickness  ",materialThick * scale, ")\n")
+   OnNewLine = OnNewLine2
+
+   post.Text (" G16 XY\n")
+   post.Text (" G27\n")
+   post.Text (" G40\n")
+
+     	 if(scale == metric) then
+         post.Text (" G71\n ") --metric mode
+     	 else
+         post.Text (" G70\n ") --inch mode
+   	end
+
+   post.Text (" G80\n")
+   post.Text (" G90\n") 
+   post.Text (" G94\n") 
+
+   post.Text (" G00 G79 Z(@ZPARKP1)\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.005 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine2()
+   post.Text ("N")
+   post.Number (lineNumber, "0")
+   lineNumber = lineNumber + 1
+end
+
+
+function OnFinish()
+   post.Text (" M30\n")
+   OnNewLine = nil
+   post.Text("%\n")
+end
+
+
+function OnRapid()
+   if firstZmove then
+      	post.ModalText (" G00")
+     	post.ModalNumber (" X", endX * scale, "0.0###")
+   	post.ModalNumber (" Y", endY * scale, "0.0###")
+  	post.Eol()
+        post.ModalNumber (" G00 Z", safeZ * scale, "0.0000")
+   	post.ModalNumber (" Z", endZ * scale, "0.0###")
+   	firstZmove = false
+   else
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0###")
+   post.ModalNumber (" Y", endY * scale, "0.0###")
+   post.ModalNumber (" Z", endZ * scale, "0.0###")
+   end
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0###")
+   post.ModalNumber (" Y", endY * scale, "0.0###")
+   post.ModalNumber (" Z", endZ * scale, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0###")
+   post.NonModalNumber (" Y", endY * scale, "0.0###")
+   post.ModalNumber (" Z", endZ * scale, "0.0###")
+   post.Text (" I")
+   post.Number ((arcCentreX) * scale, "0.0###")
+   post.Text (" J")
+   post.Number ((arcCentreY) * scale, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnSpindleCW()
+   --post.ModalNumber (" S", spindleSpeed, "0.##")
+   --post.Text (" M03")
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Text (" M04")
+   post.Eol()
+end
+
+function OnSpindleOff()
+   post.Text (" M05\n")
+end
+
+
+function OnNewOperation()
+   --post.Text (" (", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   firstZmove = true
+   post.Text (" ;(", toolName, ")\n")
+   post.Text (" T")
+   post.Number (tool, "00")
+   post.Text (" M06\n ")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Text (" M03\n")
+   post.Eol()
+   if (plungeRate <= 0) then
+      post.Warning("WARNING Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING Feed rate is zero")
+   end
+end
+
+function OnSpindleChanged()
+--   post.ModalNumber (" S", spindleSpeed, "0.##")
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING Spindle speed is zero")
+   end
+end
+
+function OnNewPart()
+   --post.Text(" (Part ",partName,")\n");
+end
+
+
+function OnFloodOn()
+   post.Text(" M08 ;(Flood coolant on)\n")
+end
+
+function OnMistOn()
+   post.Text(" M08 ;(Mist coolant on)\n")
+end
+
+function OnCoolantOff()
+   post.Text(" M09 ;(Coolant off)\n")
+end
+
+function OnDrillStart()
+   firstDrill = true
+end
+
+function OnDrill()
+   if firstDrill then
+   	post.ModalNumber (" X", endX * scale, "0.0000")
+   	post.ModalNumber (" Y", endY * scale, "0.0000")
+   	post.ModalNumber (" Z", safeZ * scale, "0.0000")
+	post.Text("\n")
+	if math.abs(drillZ) == (drillPeck - materialThick) then
+	post.Text(" G83 ")
+	post.ModalNumber (" Z", drillZ * scale, "0.0000")
+	post.ModalNumber (" R", safeZ * scale, "0.0000")
+	post.ModalNumber (" Q", drillPeck * scale, "0.0000")
+	post.ModalNumber (" F", feedRate * scale, "0.0###")
+	post.Text("\n")
+	firstDrill = false
+
+    else
+	post.Text(" G81 ")
+	post.ModalNumber (" Z", drillZ * scale, "0.0000")
+	post.ModalNumber (" R", safeZ * scale, "0.0000")
+	post.ModalNumber (" F", feedRate * scale, "0.0###")
+	post.Text("\n")
+	firstDrill = false
+	end
+   else
+   	post.ModalNumber (" X", endX * scale, "0.0000")
+   	post.ModalNumber (" Y", endY * scale, "0.0000")
+   end
+   post.Eol()
+end
+
+function OnDrillEnd()
+   post.Text(" G80\n")
+   post.CancelModaltext();
+end
+
+function OnSetFeed()
+end
+
+function OnTapStart()
+   post.Text(" M49\n") --disable FRO
+   post.Text(" G95\n") --feed per rev
+end
+
+function OnAutoTap()
+   clearance = 1 --tapping clearance height
+
+--move to hole X,Y coordinates
+   OnRapid()
+
+--move to tapping clearance height
+   clearance = clearance + drillStart
+   endZ = clearance
+   OnRapid()
+
+--feed to depth
+   feedRate = tapPitch * underFeed
+   OnSetFeed()
+   endZ = drillZ
+   OnMove()
+
+--retract to engage reverse clutch
+   endZ = drillZ + tapTravel
+   feedRate = 10000
+   OnMove()
+
+--feed out
+   feedRate = tapPitch * reverseMult * underFeed
+   endZ = tapTravel + clearance
+   OnMove()
+
+--retract to clearance plane
+   endZ = safeZ
+   OnRapid()
+
+end
+
+function OnRigidTap()
+   clearance = 1 --tapping clearance height
+
+--spindle forwards
+   if (spindleDir == 1) then
+      OnSpindleCW()
+   else
+      OnSpindleCCW()
+   end
+   spindlecache = spindleSpeed
+
+--move to hole X,Y coordinates
+   OnRapid()
+
+--move to tapping clearance height
+   endZ = clearance + drillStart
+   OnRapid()
+
+--tap to depth, correcting for underfeed
+   feedRate = tapPitch * underFeed
+   OnSetFeed()
+   depthfix = (drillStart - drillZ) * (1 - underFeed)
+   endZ = drillZ + depthfix
+   OnMove()
+
+--reverse spindle
+   OnSpindleOff()
+   spindleSpeed = spindlecache * reverseMult
+   if(spindleDir == -1) then
+      OnSpindleCW()
+   else
+      OnSpindleCCW()
+   end
+
+--feed out
+   feedRate = tapPitch * reverseMult * underFeed
+   OnSetFeed()
+   endZ = clearance + drillStart
+   OnMove()
+
+--stop spindle and restore speed to tapping speed
+   OnSpindleOff()
+   spindleSpeed = spindlecache
+
+
+--retract to clearance plane
+   endZ = safeZ
+   OnRapid() --retract to clearance plane
+
+end
+
+
+function OnTapEnd()
+   post.Text(" M48\n") --enable FRO
+   post.Text(" G94\n") --feed per min
+end

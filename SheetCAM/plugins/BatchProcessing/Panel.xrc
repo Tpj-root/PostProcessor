@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<resource xmlns="http://www.wxwidgets.org/wxxrc">
+	<object class="wxPanel" name="Panel">
+		<object class="wxBoxSizer">
+			<orient>wxVERTICAL</orient>
+			<object class="sizeritem">
+				<object class="wxDirPickerCtrl" name="ID_SRCDIR">
+					<message></message>
+				</object>
+				<flag>wxTOP|wxLEFT|wxRIGHT|wxEXPAND</flag>
+				<border>2d</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxBoxSizer">
+					<object class="sizeritem">
+						<object class="wxTextCtrl" name="ID_SEARCHBOX" />
+						<flag>wxTOP|wxLEFT|wxEXPAND</flag>
+						<border>2d</border>
+						<option>1</option>
+					</object>
+					<object class="sizeritem">
+						<object class="wxBitmapButton" name="ID_SEARCHBUTTON">
+							<bitmap stock_id="wxART_FIND" />
+						</object>
+						<flag>wxTOP|wxRIGHT|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL</flag>
+						<border>2d</border>
+					</object>
+					<object class="sizeritem">
+						<object class="wxCheckBox" name="ID_SUBDIRS">
+							<label>Include sub dirs</label>
+						</object>
+						<flag>wxTOP|wxLEFT|wxRIGHT|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL</flag>
+						<border>2d</border>
+					</object>
+				</object>
+				<flag>wxEXPAND</flag>
+				<border>2d</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxBoxSizer">
+					<object class="spacer">
+						<flag>wxALL|wxEXPAND</flag>
+						<border>2d</border>
+						<option>1</option>
+					</object>
+					<object class="sizeritem">
+						<object class="wxStaticText" name="ID_STATICTEXT3">
+							<label>File type</label>
+						</object>
+						<flag>wxALL|wxALIGN_CENTER_VERTICAL</flag>
+						<border>2d</border>
+					</object>
+					<object class="sizeritem">
+						<object class="wxChoice" name="ID_FILETYPE" />
+						<flag>wxTOP|wxBOTTOM|wxRIGHT|wxALIGN_CENTER_VERTICAL</flag>
+						<border>2d</border>
+					</object>
+					<object class="sizeritem">
+						<object class="wxBitmapButton" name="ID_REFRESHBUTTON">
+							<bitmap>refresh.png</bitmap>
+							<default>1</default>
+						</object>
+						<flag>wxTOP|wxBOTTOM|wxRIGHT|wxALIGN_CENTER_VERTICAL</flag>
+						<border>2d</border>
+					</object>
+				</object>
+				<flag>wxEXPAND</flag>
+				<border>2d</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxListCtrl" name="ID_FILELIST">
+					<style>wxLC_REPORT</style>
+				</object>
+				<flag>wxEXPAND</flag>
+				<border>2d</border>
+				<option>1</option>
+			</object>
+			<object class="sizeritem">
+				<object class="wxPanel" name="ID_DRAWINGPANEL">
+					<object class="wxBoxSizer">
+						<orient>wxVERTICAL</orient>
+						<object class="sizeritem">
+							<object class="wxButton" name="ID_LOADBTN">
+								<label>Load</label>
+							</object>
+							<flag>wxEXPAND</flag>
+							<border>2d</border>
+						</object>
+						<object class="sizeritem">
+							<object class="wxBoxSizer">
+								<orient>wxVERTICAL</orient>
+								<object class="sizeritem">
+									<object class="wxCheckBox" name="ID_SHOWOPTIONS">
+										<label>Show drawing options</label>
+									</object>
+									<flag>wxALL|wxALIGN_LEFT</flag>
+									<border>2d</border>
+								</object>
+								<object class="sizeritem">
+									<object class="wxCheckBox" name="ID_USETEMPLATE">
+										<label>Load template</label>
+									</object>
+									<flag>wxALL|wxALIGN_LEFT</flag>
+									<border>2d</border>
+								</object>
+								<object class="sizeritem">
+									<object class="wxCheckBox" name="ID_KEEP_EXISTING">
+										<label>Keep existing parts</label>
+									</object>
+									<flag>wxALL|wxALIGN_LEFT</flag>
+									<border>2d</border>
+								</object>
+							</object>
+							<flag>wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL</flag>
+							<border>2d</border>
+						</object>
+						<object class="sizeritem">
+							<object class="wxFilePickerCtrl" name="ID_TEMPLATE">
+								<message></message>
+								<wildcard>Job template files|*.jobt</wildcard>
+							</object>
+							<flag>wxBOTTOM|wxLEFT|wxRIGHT|wxEXPAND</flag>
+							<border>2d</border>
+						</object>
+						<object class="sizeritem">
+							<object class="wxCheckBox" name="ID_DISABLE_OPS">
+								<label>Automatically disable unused operations</label>
+							</object>
+							<flag>wxALL|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL</flag>
+							<border>2d</border>
+						</object>
+						<object class="sizeritem">
+							<object class="wxButton" name="ID_BTNCONVERT">
+								<label>Convert selected files</label>
+							</object>
+							<flag>wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL</flag>
+							<border>0d</border>
+						</object>
+					</object>
+				</object>
+				<flag>wxEXPAND</flag>
+				<border>2d</border>
+			</object>
+		</object>
+	</object>
+</resource>

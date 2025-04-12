@@ -1,0 +1,119 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Trumpf Laser Post Processor\n")
+   ctrl:AppendText("Creative Machines  Jonathan Katz\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+
+end
+
+-- revision 4/6/10
+-- based on Torchmate plasma V2.scpost
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   revision 7/10/05
+--   Added new arc handling
+
+--   created 12/9/04
+--   Based on plasma1.post
+
+
+
+function OnInit()
+   lineNumber = 1
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+
+   post.Text ("\n%\n(DFS,P")
+   post.Text(string.gsub(time,":",""), "," , fileName, ",RWED)\n")
+
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+
+   if(scale == metric) then
+      post.Text (" G71 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G70 (Units: Inches)\n") --inch mode
+   end
+
+   post.Text ("/Q20\nG54\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   --post.Text ("N")
+   --post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 1
+end
+
+
+function OnFinish()
+   post.Text("Q26\n")
+   post.Text ("M30\n")
+end
+
+function OnRapid()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.ModalText(" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.ModalText(" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text (" G03")
+   else
+      post.Text (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   post.ModalText ("Q24\n")
+end
+
+
+function OnPenUp()
+    post.Text ("Q28\n \n")
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   post.Text("G801[")
+   post.Number( tool, "0000000")
+   post.Text("]\n")
+end
+
+function OnNewPart()
+end
+
+function OnDrill()
+end

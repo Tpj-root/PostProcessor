@@ -1,0 +1,142 @@
+
+post.SetOptions(post.ARC_SEGMENTS)
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Siemens laser cutter post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M22  turn the torch on\n")
+   ctrl:AppendText("M23  turn the torch off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--   created 03/03/08
+--   Based on Mach2 plasma.post
+
+
+post.ForceExtension("NC")
+
+
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "")
+   lineNumber = lineNumber + 10
+   post.Text (" ")
+end
+
+function OnToolChange()
+   post.Text (" M6")
+   post.Text (" D",tool )
+   post.Text (" T")
+   post.Number (tool, "0 ")
+   post.Text (" F=r",tool )
+   post.Text ("  (", toolName, ")\n")
+
+
+end
+
+
+
+
+function OnInit()
+
+--[[   post.Text ("(Filename: ", fileName, ");\n")
+   post.Text ("(Post processor: ", postName, ");\n")
+   post.Text ("(Date: ", date, ");\n")
+   if(scale == metric) then
+      post.Text ("G21 (Units: Metric);\n") --metric mode
+   else
+      post.Text ("G20 (Units: Inches);\n") --inch mode
+   end
+   post.Text ("G90 G40;\n")]]
+   post.Text (" G54\n\n")
+   if(scale == metric) then
+      format = "0.0#"
+   else
+      format = "0.0##"
+   end
+end
+
+
+
+function OnFinish()
+   post.Text (" M30\n\n")
+end
+
+function OnRapid()
+   if(endX > 1e10 or endY > 1e10) then return end
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText (" G0")
+   post.ModalNumber (" X", endX * scale, format)
+   post.ModalNumber (" Y", endY * scale, format)
+   post.Text("\n")
+end
+
+function OnOffsetNone()
+   post.Text(" G40 (offset off)\n");
+end
+
+function OnOffsetLeft()
+   post.Text(" G41 (offset left)\n");
+end
+
+function OnOffsetRight()
+   post.Text(" G42 (offset right)\n");
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, format)
+   post.ModalNumber (" Y", endY * scale, format)
+
+   post.Text("\n")
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, format)
+   post.NonModalNumber (" Y", endY * scale, format)
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, format)
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, format)
+
+   post.Text("\n")
+end
+
+
+function OnPenDown()
+   post.Text (" M22\n")
+end
+
+
+function OnPenUp()
+   post.Text (" M23\n")
+end
+
+
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

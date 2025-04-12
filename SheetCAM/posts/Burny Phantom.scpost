@@ -1,0 +1,129 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Burny Phantom\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Uses incremental I,J.\n")
+end
+
+
+--   Created 30/6/2006
+-- Added drilling 13/5/2010
+
+
+function OnInit()
+   nolines = true
+   post.Text("%\n")
+   nolines = nil
+   if(scale == metric) then
+      post.Text ("G71\n") --metric mode
+   else
+      post.Text ("G70\n") --inch mode
+   end
+   post.Text ("G91\nG40\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   curx =0
+   cury =0
+end
+
+function OnNewLine()
+   if nolines then return end
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+function OnFinish()
+   endX = 0
+   endY = 0
+   OnRapid()
+   post.Text ("M30\n")
+end
+
+function OnRapid()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   if(endX >= 1e17 and endY >= 1e17) then return end
+--   post.Text("G0");
+   doxy()
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+--   post.ModalText("G1");
+   doxy()
+   post.ModalNumber("F", feedRate * scale, "0.0")
+   post.Eol()
+end
+
+function doxy()
+   if(endX < 1e17) then
+      tmp = (endX * scale) - curx
+      tmp = math.toint(tmp * 1000)/1000
+      curx = curx + tmp
+      if(tmp ~=0) then
+         post.NonModalNumber("X",tmp,"0.0##")
+      end
+   end
+
+   if(endY < 1e17) then
+      tmp = (endY * scale) - cury
+      tmp = math.toint(tmp * 1000)/1000
+      cury = cury + tmp
+      if(tmp ~=0) then
+         post.NonModalNumber("Y",tmp,"0.0##")
+      end
+   end
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText ("G3")
+   else
+      post.ModalText ("G2")
+   end
+--   post.CancelModaltext()
+   local cx = curx
+   local cy = cury
+   doxy()
+   if((arcCentreX - currentX) ~=0) then
+      post.NonModalNumber ("I", (arcCentreX * scale) - cx, "0.0##")
+   end
+   if((arcCentreY - currentY) ~=0) then
+      post.NonModalNumber ("J", (arcCentreY * scale) - cy, "0.0##")
+   end
+   post.Eol()
+end
+
+function OnPenDown()
+   if(toolClass == "MarkerTool") then
+      post.Text("M08\n")
+   else
+      post.Text("M04\n")
+   end
+end
+
+function OnPenUp()
+   if(toolClass == "MarkerTool") then
+      post.Text("M09\n")
+   else
+      post.Text("M03\n")
+   end
+end
+
+function OnToolChange()
+   post.Text("T")
+   post.Number(tool,"0")
+   post.Text("M06\n")
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end
+

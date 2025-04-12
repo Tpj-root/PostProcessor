@@ -1,0 +1,79 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("PlasmaCam Post Processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Import into PlasmaCam Software using Gcode import\n")
+   ctrl:AppendText("When importing check box that says \"Import as cut paths\"\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Zmoves are not used by PlasmaCam\n")
+   ctrl:AppendText("PlasmaCam Should use Sheetcams cut order But please Verify!\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Do not use PlasmaCam Offsets\n")
+   ctrl:AppendText("Abs IJ\n")
+   ctrl:AppendText("G-codes used:\n")
+   ctrl:AppendText("G00,G01,G02,G03\n")
+end
+
+
+
+
+--  Created 10/04/08
+--  based on minimum g-code.post
+
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+function OnRapid()
+   post.Text (" G00")
+   if(endX < 1e17) then
+      post.NonModalNumber (" X", endX * scale, "0.0000")
+   end
+   if(endY < 1e17) then
+      post.NonModalNumber (" Y", endY * scale, "0.0000")
+   end
+   post.NonModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnMove()
+   post.Text (" G01")
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.NonModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text (" G03")
+   else
+      post.Text (" G02")
+   end
+   post.CancelModaltext()
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Text (" I")
+   post.Number (arcCentreX * scale, "0.0000")
+   post.Text (" J")
+   post.Number (arcCentreY * scale, "0.0000")
+   post.Eol()
+end
+
+function OnDrill()
+   OnRapid()
+   endZ = drillZ
+   OnMove()
+   endZ = safeZ
+   OnRapid()
+end
+
+

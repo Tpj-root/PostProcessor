@@ -1,0 +1,169 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Heidenhain TNC155 post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Uses G02/G03 for helical moves\n")
+   ctrl:AppendText("No comments\n")
+   ctrl:AppendText("Absolute IJ\n")
+end
+
+
+
+--   Created 9/3/2006 based on TurboCNC V4.post
+
+
+
+function OnInit()
+   post.SetCommentChars ("();", "[]:")  --make sure ( and ) characters do not appear in system text
+   nonumbers = 1
+   lineNumber = 10
+   post.Text("%\n")
+   nonumbers =0
+   if(scale == metric) then
+      post.Text (" G71\n") --metric mode
+   else
+      post.Text (" G70\n") --inch mode
+   end
+   post.Text (" G17\n")  --XY plane
+   post.Text (" G40\n")  --no cutter comp
+   post.Text (" G90\n")  --absolute
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   if(nonumbers ==1) then return end
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   endZ = safeZ
+   OnRapid()
+   post.Text (" M05\n M30\n")
+end
+
+function OnRapid()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "+0.0###")
+   post.ModalNumber (" Y", endY * scale, "+0.0###")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "+0.0###")
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "+0.0###")
+   post.ModalNumber (" Y", endY * scale, "+0.0###")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnArc()
+   if(endZ ~= currentZ) then --helical - done as moves
+      post.ArcAsMoves(0.05)
+      return
+   end
+   if(arcAngle <0) then
+      post.ModalText (" G03")  --use circ moves
+   else
+      post.ModalText (" G02")  --use circ moves
+   end
+   post.ModalNumber (" X", endX * scale, "+0.0###")
+   post.ModalNumber (" Y", endY * scale, "+0.0###")
+--   modalnumber (" Z", (endz + tooloffset) * scale, "+0.0###")
+   post.NonModalNumber (" I", arcCentreX * scale, "+0.0###")
+   post.NonModalNumber (" J", arcCentreY * scale, "+0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+
+function OnSpindleCW()
+   post.Text (" M03")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.Text (" M04")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnSpindleOff()
+   post.Text (" M05\n")
+end
+
+
+function OnNewOperation()
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnToolChange()
+   post.Text (" M06 T")
+   post.Number (tool, "0")
+end
+
+
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+function OnFloodOn()
+   post.Text(" M08\n")
+end
+
+function OnMistOn()
+   post.Text(" M07\n")
+end
+
+function OnCoolantOff()
+   post.Text(" M09\n")
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end

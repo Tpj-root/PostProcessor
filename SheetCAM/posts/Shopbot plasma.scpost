@@ -1,0 +1,163 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Shopbot post processor\n")
+   ctrl:AppendText("\n")
+end
+
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   revision 7/10/05
+--   Added new arc handling
+
+--   Created 16/8/2005
+
+
+
+function OnInit()
+   PrevTool = -1
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+end
+
+
+function OnFinish()
+end
+
+function OnRapid()
+   if(endX >= 1e17 or endY >= 1e17 or endZ >= 1e17) then return end
+   post.Text ("J3 ")
+   post.Number (endX * scale, "0.####")
+   post.Text (", ")
+   post.Number (endY * scale, "0.####")
+   post.Text (", ")
+   post.Number ((endZ + toolOffset) * scale, "0.####")
+   post.Eol()
+end
+
+function OnMove()
+   post.Text ("M3 ")
+   post.Number (endX * scale, "0.####")
+   post.Text (", ")
+   post.Number (endY * scale, "0.####")
+   post.Text (", ")
+   post.Number ((endZ + toolOffset) * scale, "0.####")
+   post.Eol()
+end
+
+function OnSetFeed()
+   post.Text("MS ")
+   post.Number ((feedRate * scale)/60, "0.##")
+   post.Text (", ")
+   post.Number ((feedRate * scale)/60, "0.##")
+   post.Text (", ")
+   post.Number ((feedRate * scale)/60, "0.##")
+   post.Eol()
+end
+
+function OnArc()
+   if(endZ ~= currentZ) then
+      post.ArcAsMoves(0.05)
+      return
+   end
+   post.Text ("CG , ")
+   post.Number (endX * scale, "0.0000")
+   post.Text (", ")
+   post.Number (endY * scale, "0.0000")
+   post.Text (", ")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (", ")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.Text (", T,")
+   if(arcAngle <0) then
+      post.Text ("-1\n")
+   else
+      post.Text ("1\n")
+   end
+   post.Eol()
+end
+
+function OnPenDown()
+  post.Text("SO,1,1\n")
+end
+
+
+function OnPenUp()
+  post.Text("SO,1,0\n")
+end
+
+
+function OnNewOperation()
+end
+
+
+function OnToolChange()
+   if(tool ~= PrevTool) then
+      if(PrevTool ~= -1) then
+         post.Text ("Pause\n")
+         post.Eol()
+      end
+      PrevTool = tool
+   end
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+function OnNewPart()
+end
+
+
+function OnFloodOn()
+end
+
+function OnMistOn()
+end
+
+function OnCoolantOff()
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end

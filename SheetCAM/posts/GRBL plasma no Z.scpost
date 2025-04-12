@@ -1,0 +1,121 @@
+firstPierceTime = 0 --this is an extra delay added to the first pierce as needed by some machines
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("GRBL plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Generic plasma post for machines with or without THC\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("No comments\n")
+   ctrl:AppendText("M3/M5 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+post.ForceExtension("nc")
+post.SetOptions(post.ARC_SEGMENTS)
+
+
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   if(scale == metric) then
+      post.Text ("G21\n") --metric mode
+      format = "0.0##"
+   else
+      post.Text ("G20\n") --inch mode
+      format = "0.0###"
+   end
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   firstPierce = firstPierceTime
+   oldFeed = -1
+end
+
+function OnFinish()
+   post.Text ("M5 M30\n")
+end
+
+function OnRapid()
+   if(math.hypot (endX - currentX, endY - currentY) < 0.01) then return end
+   post.Text ("G0")
+   post.ModalNumber ("X", endX * scale, format)
+   post.ModalNumber ("Y", endY * scale, format)
+   post.Eol()
+end
+
+function OnMove()
+   if(math.hypot (endX - currentX, endY - currentY) < 0.01) then return end
+   if oldFeed ~= feedRate then
+      oldFeed = feedRate
+      post.ModalNumber ("F", feedRate * scale, "0.0###")
+      post.Eol()
+   end
+   post.Text ("G1")
+   post.NonModalNumber ("X", endX * scale, format)
+   post.NonModalNumber ("Y", endY * scale, format)
+   post.Eol()
+end
+
+function OnArc()
+   if oldFeed ~= feedRate then
+      oldFeed = feedRate
+      post.ModalNumber ("F", feedRate * scale, "0.0###")
+      post.Eol()
+   end
+   if(arcAngle <0) then
+      post.Text ("G3")
+   else
+      post.Text ("G2")
+   end
+   post.NonModalNumber ("X", endX * scale, format)
+   post.NonModalNumber ("Y", endY * scale, format)
+   post.Text ("I")
+   post.Number ((arcCentreX - currentX) * scale, format)
+   post.Text ("J")
+   post.Number ((arcCentreY - currentY) * scale, format)
+   post.ModalNumber ("F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+
+function OnPenDown()
+   if (preheat > 0.001) then
+--      post.Text ("G0")
+--      post.NonModalNumber ("Z", cutHeight * scale, format)
+      post.Text ("\n G4 P")
+      post.Number (preheat,"0.###")
+      post.Eol()
+   end
+   post.Text ("G0")
+   post.NonModalNumber ("Z", pierceHeight * scale, format)
+   post.Text ("\nM3\n")
+   if (pierceDelay + firstPierce > 0.001) then
+      post.Text ("G04 P")
+      post.Number (pierceDelay + firstPierce,"0.###")
+      firstPierce = 0
+      post.Eol()
+   end
+end
+
+
+function OnPenUp()
+   post.Text ("M5\n")
+   if (endDelay > 0) then
+      post.Text ("G4 P")
+      post.Number (endDelay,"0.###")
+      post.Eol()
+   end
+end
+
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

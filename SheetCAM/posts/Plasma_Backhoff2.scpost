@@ -1,0 +1,248 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Change for SolidWeld\n")
+   ctrl:AppendText("Backhoff plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Generic plasma post for machines with THC\n")
+end
+
+--  Created 4/3/15
+--  Add tool 50 - 55 with function THC ON and OFF, Plama tool 1-50  
+
+--  Change 4/3/15
+--  Change location for THC ON and OFF
+
+--  Created 17/5/2015 - REv 2
+--  Add M01 for drill operation , add note start cycle
+
+--  Created 31/5/2015
+--  Created new post for Bachoff system
+
+--  0x zkontrolovat + n￡jezd na 0 u M30
+ 
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   
+     
+   
+   post.Text ("     (Program: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G00 G17 G90 G40 (Change for Backhoff)\n ") --F1\n S500\n G91.1
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   oldFeed = -1
+end
+
+function CheckFeed()
+   if(oldFeed == feedRate) then return end
+   oldFeed = feedRate
+   if feedRate == plungeRate then 
+      post.Text(" Fparametr3")
+   else
+      post.Text(" Fparametr4")
+   end
+end
+
+function CheckZ()
+   if(endZ ~= currentZ) then
+      if(endZ == pierceHeight) then
+         post.Text(" ZParametr1")
+      elseif(endZ == cutHeight) then
+         post.Text(" ZParametr")
+      else 
+         post.ModalNumber (" Z", endZ * scale, "0.0000")
+      end
+   end
+end
+
+function OnNewLine()
+     post.Text ("N")
+     post.Number (lineNumber, "0000")
+     lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   post.Text (" M05 (MXX05)\n")
+   --post.Text (" G00 X0 Y0 Z50\n")  ---  by customer
+   post.Text (" M30\n")
+end
+
+function OnRapid()
+   post.Text (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   CheckZ()
+   post.Eol()
+end
+
+function OnMove()
+   post.Text (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   CheckZ()
+--   post.ModalNumber (" Z", endZ * scale, "0.0000")
+--   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   CheckFeed();
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text (" G03")
+   else
+      post.Text (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", endZ * scale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+--   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   CheckFeed()
+   post.Eol()
+end
+
+
+function OnPenDown()
+
+   post.Text (" (Subroutine - reference axis Z)\n ")
+   post.Text ("G28.1 Z0 (Reference axis Z)\n ")
+   post.Text ("G92 Z0 (Zero axis Z)\n ")
+   post.Text ("G00 Z(parametr from backhoff table - Pierce height)\n ")  --- V�ﾚka n￡palu
+   post.Text ("(M99 End subroutine)\n ")
+   post.Text ("M03 (MXX03)\n ")
+   post.Text ("G04 P100 (100= 1 sekunda - parametr from backhoff table)\n ")
+
+ end
+
+
+function OnPenUp()
+-- Standard plasma tool
+  if(tool <50) then
+   post.Text (" M05 (MXX05)\n")
+  end
+-- Tool with THC On
+  if(tool ==50) then
+   post.Text (" M05\n")
+   post.Text ("(THC OFF)\n")
+   post.Text (" M1200\n")
+  end
+  if(tool ==51) then
+   post.Text (" M05\n")
+   post.Text ("(THC OFF)\n")
+   post.Text (" M1200\n")
+  end
+  if(tool ==52) then
+   post.Text (" M05\n")
+   post.Text ("(THC OFF)\n")
+   post.Text (" M1200\n")
+  end
+  if(tool ==53) then
+   post.Text (" M05\n")
+   post.Text ("(THC OFF)\n")
+   post.Text (" M1200\n")
+  end
+  if(tool ==54) then
+   post.Text (" M05\n")
+   post.Text ("(THC OFF)\n")
+   post.Text (" M1200\n")
+  end
+  if(tool ==55) then
+   post.Text (" M05\n")
+   post.Text ("(THC OFF)\n")
+   post.Text (" M1200\n")
+  end
+
+end
+
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+    post.Text (" M06 T")
+   post.Number (tool, "0")
+   CheckFeed()
+   post.Text ("  (", toolName, ")\n")
+--[[   post.ModalNumber(" F",feedRate * scale,"0.0###")
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end]]
+   -- Tool with THC On
+  if(tool == 50) then
+   post.Text (" M1100 (THC ON)\n")
+  end
+  if(tool == 51) then
+   post.Text (" M1100 (THC ON)\n")
+  end
+  if(tool == 52) then
+   post.Text (" M1100 (THC ON)\n")
+  end
+  if(tool == 53) then
+   post.Text (" M1100 (THC ON)\n")
+  end
+  if(tool == 54) then
+   post.Text (" M1100 (THC ON)\n")
+  end
+  if(tool == 55) then
+   post.Text (" M1100 (THC ON)\n")
+  end
+end
+
+function OnNewPart()
+   post.Text(" Call backhoff table: ",partName," Thickness ",materialThick," \n");--(number=parametr , Steel=part name)
+end
+
+function OnDrillStart()
+ 
+ post.Text (" (Start znaceni)\n ") 
+
+end
+
+function OnDrill()
+
+   OnRapid()
+   post.Text (" (Podprogram - poloha Z)\n ")
+   post.Text ("G00 Z10  (start podprogramu)\n ")
+   post.Text ("G28.1 Z0\n ")
+   post.Text ("G92 Z0\n ")
+   post.Text ("G00 Z6.0\n ") --- V�ﾚka konc￡ku
+   post.Text ("G92 Z0\n ")
+   post.Text ("(M99 konec podprogramu)\n ")
+   post.Text ("G00 Z2\n")
+   post.Text (" M03\n")
+   --post.Text (" G04 P0 \n ")
+   post.Text (" M05\n")
+   post.Text (" G00 Z20\n")
+   
+  -- OnMove()
+  -- OnPenUp()
+   endZ = safeZ
+  -- OnRapid()
+
+function OnDrillEnd()
+
+   post.Text (" M01\n ")
+
+end
+  
+end

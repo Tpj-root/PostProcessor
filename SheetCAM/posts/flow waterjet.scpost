@@ -1,0 +1,88 @@
+-- Set this value to the maximum cutting speed of your machine in mm/min.
+--If you are using inches, multiply IPM by 25.4 to get mm/min
+maxFeed = 100 * 25.4
+
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Omax ord format post processor\n")
+   ctrl:AppendText("NOTE: You need to edit the post and set the maxFeed to suit your machine.\n")
+end
+
+
+post.ForceExtension("ord")
+post.SetOptions(post.ARC_SEGMENTS)
+
+function OnInit()
+   scale = inch
+   chk1 = -1
+   chk2 = 0
+   data = ""
+end
+
+
+function OnFinish()
+   post.Text("// This file was created by FlowMaster(R), which is proprietary to Flow International Corporation. ", chk1, " ", chk2, "\n")
+   post.Text("// Created by SheetCam\n")
+   post.Text(data)
+end
+
+function DoNumber(number, nocomma)
+   local t = post.FormatNumber(number,"0.0000")
+   if t == "-0.0000" then t = "0.0000" end
+   while(string.len(t) < 10) do
+      t = " " .. t
+   end
+   data = data .. t
+   if not nocomma then data = data .. "," end
+end
+
+function DoFeed()
+   local perc = (feedRate / maxFeed) * 100;
+   if(perc > 100) then perc = 100 end
+   local t = post.FormatNumber(perc,"0")
+   while(string.len(t) < 5) do
+      t = " " .. t
+   end
+   data = data .. t
+end
+
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001) then return end 
+   DoNumber(currentX * scale)
+   DoNumber(currentY * scale)
+   data = data .. " 0,"
+   DoFeed()
+   data = data .. ", 1\n"
+   chk1 = chk1 + 1
+end
+
+function OnArc()
+   DoNumber(currentX * scale)
+   DoNumber(currentY * scale)
+   if(arcAngle > 0) then
+      data = data .. " 1,"
+   else
+      data = data .. "-1,"
+   end
+   DoFeed()
+   data = data .. ", 1,"
+   DoNumber(arcCentreX * scale)
+   DoNumber(arcCentreY * scale, true)
+   data = data .. "\n"
+   chk2 = chk2 + 1
+end
+
+
+function OnPenUp()
+   DoNumber(endX * scale)
+   DoNumber(endY * scale)
+   data = data .. " 0,    0, 0\n"
+   chk1 = chk1 + 1
+end
+
+
+function OnPenDown()
+end

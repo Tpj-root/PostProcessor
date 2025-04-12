@@ -1,0 +1,113 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("ANCA2000 laser post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("M10/M12 turn the torch on/off\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+--  modified 3/2/07 
+--  Removed final safety move. This is now done in SheetCam
+
+--   created 26/10/05
+--   Based on plasma2.post
+
+
+
+function OnInit()
+
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text ("(Filename: ", fileName, ")\n")
+   post.Text ("(Post processor: ", postName, ")\n")
+   post.Text ("(Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text ("G71\n(Units: Metric)\n") --metric mode
+      format = "0.0#"
+   else
+      post.Text ("G70\n(Units: Inches)\n") --inch mode
+      format = "0.0##"
+   end
+   post.Text ("\nG90\nG40\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   firstTime = true
+end
+
+function OnNewLine()
+end
+
+
+function OnFinish()
+   post.Text("M16\n")
+   post.Text ("M5\nM2\n")
+end
+
+function OnRapid()
+   if(currentX == endX and currentY == endY) then return end
+   post.ModalText ("G0")
+   post.ModalNumber ("X", endX * scale, format)
+   post.ModalNumber ("Y", endY * scale, format)
+   post.Eol()
+   if(firstTime) then 
+      firstTime = false
+      post.Text("M15\n")
+   end
+end
+
+function OnMove()
+   if(currentX == endX and currentY == endY) then return end
+   post.ModalText ("G1")
+   post.ModalNumber ("X", endX * scale, format)
+   post.ModalNumber ("Y", endY * scale, format)
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText ("G3")
+   else
+      post.ModalText ("G2")
+   end
+   post.NonModalNumber (" X", endX * scale, format)
+   post.NonModalNumber (" Y", endY * scale, format)
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, format)
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, format)
+   post.Eol()
+end
+
+
+function OnPenDown()
+   post.Text ("M10\n")
+end
+
+function OnSetFeed()
+   post.ModalNumber ("F", feedRate * scale, format)
+   post.Eol()
+end
+
+
+function OnPenUp()
+   post.Text ("M12\n")
+end
+
+
+function OnNewOperation()
+   post.Text ("(Operation: ", operationName, ")\n")
+--   if (feedRate <= 0) then
+--      post.Warning("WARNING: Feed rate is zero")
+--   end
+end
+
+function OnToolChange()
+end
+
+
+function OnNewPart()
+   post.Text("(Part: ",partName,")\n");
+end

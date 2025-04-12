@@ -1,0 +1,129 @@
+--set this to false to disable feed rate
+useFeed = true
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("WinCNC plasma post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("WinCNC + with THC\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Comments enclosed with [ and ]\n")
+   ctrl:AppendText("Torch height controlled by the WinCNC controller\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+
+--   created 23/02/07
+--   Based on WinCNC plasma V3.post
+
+
+
+function OnInit()
+
+   post.SetCommentChars ("[]", "<>")  --make sure [ and ] characters do not appear in system text
+   post.Text ("[Filename: ", fileName, "]\n")
+   post.Text ("[Post processor: ", postName, "]\n")
+   post.Text ("[Date: ", date, "]\n")
+   if(scale == metric) then
+      post.Text ("G22 [Units: Metric]\n") --metric mode
+   else
+      post.Text ("G20 [Units: Inches]\n") --inch mode
+   end
+   post.Text ("G90\nG9 S10\nM65\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+end
+
+
+function OnFinish()
+--   text ("M66\n")
+end
+
+function OnRapid()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   if(endX > 1e30) then return end
+   post.Text ("G0")
+   post.ModalNumber (" X", endX * scale, "0.####")
+   post.ModalNumber (" Y", endY * scale, "0.####")
+   post.Eol()
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.Text ("G1")
+   post.ModalNumber (" X", endX * scale, "0.####")
+   post.ModalNumber (" Y", endY * scale, "0.####")
+   if useFeed then
+     post.ModalNumber (" F", feedRate * scale, "0.###")
+   end
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.Text ("G3")
+   else
+      post.Text ("G2")
+   end
+   post.ModalNumber (" X", endX * scale, "0.####")
+   post.ModalNumber (" Y", endY * scale, "0.####")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.####")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.####")
+   if useFeed then
+     post.ModalNumber (" F", feedRate * scale, "0.###")
+   end
+   post.Eol()
+end
+
+
+function OnPenDown()
+   post.Text ("M61\n")
+end
+
+
+function OnPenUp()
+   post.Text ("M62\n")
+end
+
+function OnNewOperation()
+   post.Text ("[Operation: ", operationName, "]\n")
+end
+
+function OnComment()
+  post.Text("[",commentText,"]\n")
+end
+
+function OnSpindleChanged()
+
+end
+
+function OnToolChange()
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnNewPart()
+   post.Text("[Part: ",partName,"]\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

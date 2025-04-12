@@ -1,0 +1,571 @@
+---********************  Configuration section **********************
+
+--- Angles below this threshold do not trigger a lift
+angThreshold = 10 --note this angle is in degrees
+
+
+-- Alignment moves for angles below this threshold (in degrees) are ignored.
+-- This can effectively drag the blade slightly sideways so keep it small
+minAngle = 0.01
+
+-- Set this to true if small alignment moves should be done as G1 moves
+-- It helps smooth motion on some machines
+alignAtFeed = false
+
+-- This is how high the tool is lifted to turn (in millimetres).
+-- Set this to false to use the material thickness
+liftClearance = 25.4
+
+--the cutter will never rotate by more than this amount (in degrees)
+--For example 360 will give a maximum of +360 to -360 degrees
+--If your machine has no limit, use a value of 1e10
+maxAngle = 1e10
+
+--Change this to true to reverse the A axis direction of rotation
+reverseA = false
+
+--This value is added to the A axis angle. By default A0 is 12 O' clock
+--For instance if you want an A0 to be 3 o'clock you would set angleOffset to 90 degrees
+angleOffset = 0
+
+--Set this value to false if you don't have a motorised Z axis
+useZ = true
+
+--Set this to whatever code is needed to drop the knife if you don't have a motorised Z axis. E.g "M08"
+--Set it to nil if you don't want to output any code
+knifeDown = "M08"
+
+--Set this to whatever code is needed to lift the knife if you don't have a motorised Z axis. E.g "M09"
+--Set it to nil if you don't want to output any code
+knifeUp = "M09"
+
+
+--Set this to true if the cutter must always face in the direction of cut even when doing rapid moves
+--NOTE: On the first rapid move SheetCam has no way of knowing where the cutter is so it assumes the cutter is parked at 0,0.
+checkRapids = false
+
+
+--Set this to true if the cutter can cut in both directions (e.g pizza wheel)
+cutBidir = false
+
+
+--The number of units for one full revolution. For example 360 will output 360 degrees as one full revolution
+-- 1 would output 1 as a full revolution, 0.5 as half a rev etc.
+unitsPerRev = 1
+
+
+--Code to output at the start of cutting. Use to set plane, starting position etc
+--Note \n starts a new line
+startSequence = " G90"
+
+
+--Code to output at the end of cutting. Use for parking etc.
+--Note \n starts a new line
+finishSequence = " M30"
+
+--code to turn on a clamp when only the X axis is moving. Use nil if you don't need this
+--for example xClampOn = "M03"
+xClampOn = nil
+
+--code to turn the clamp off. Use nil if you don't need this
+--for example xClampOff = "M05"
+xClampOff = nil
+
+
+---********************  Do not alter anything after this line **********************
+
+post.SetOptions(post.ARC_SEGMENTS)
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Hind Technologies Masso post processor with tangential knife\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("uses G43 tool length offsets\n")
+   ctrl:AppendText("Knife angle is in degrees\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Post variables:\n")
+   ctrl:AppendText("angThreshold - The tool will not lift for angles below this value\n")
+   ctrl:AppendText("liftClearance - This is how high the tool is lifted before rotating\n")
+
+end
+
+post.DefineVariable("angThreshold",sc.unitANGULAR,0,math.pi)
+post.DefineVariable("liftClearance",sc.unitLINEAR,0,1e17)
+
+angleOffset = (angleOffset / 180 ) * math.pi
+angThreshold = (angThreshold / 180 ) * math.pi
+maxAngle = (maxAngle / 180 ) * math.pi
+minAngle = (minAngle / 180) * math.pi
+
+function ClampOn(state)
+   if state == clampWason then return end
+   clampWason = state;
+   if(state) then
+      if(xClampOn) then
+         post.Text(" " .. xClampOn .. "\n")
+      end
+   else
+      if(xClampOff) then
+         post.Text(" " .. xClampOff .. "\n")
+      end
+   end
+end
+
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   local as = 180 / math.pi
+   post.Text(" (Angle threshold = " .. angThreshold  * as .. ")\n")
+   post.Text(" (min Angle = " .. minAngle  * as .. ")\n")
+
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+
+   post.Text(startSequence)
+   post.Eol()
+   pi = math.pi
+   twopi = 2 * pi
+   angscale = unitsPerRev / twopi
+   if(reverseA) then
+      angscale = - angscale;
+   end
+   needRapid = true
+   lastang = 0
+   curang = -angleOffset
+   post.Eol()
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+--[[   if cutBiDir then
+      rotAng = pi
+   else
+      rotAng = twopi
+   end]]
+
+   arcstop = 0
+   numLifts = 0
+   liftClearance = materialThick
+   angOffset = 0
+   aLen = 0
+   bLen = 0
+   angError = 0
+   clampWason = false;
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   endZ = safeZ
+   OnRapid()
+   post.Text(finishSequence)
+   post.Eol()
+   post.Text (" ( Number of lifts = " .. numLifts .. " )\n");
+   if cutBidir then
+      post.Text (" ( Cutting distance on side A = ")
+      post.Number(aLen * scale, "0.00")
+      post.Text(" )\n")
+      post.Text (" ( Cutting distance on side B = ")
+      post.Number(bLen * scale, "0.00")
+      post.Text(" )\n")
+   end
+end
+
+function OnRapid()
+--[[   if (endZ < currentZ) then
+      needplunge = true
+      return
+   end
+   if checkRapids then
+      if currentX > 1e17 then
+         currentX = 0
+         post.Text("(WARNING: The cutter must be at X0, Y0 before running this program)\n")
+      end
+      if currentY > 1e17 then
+         currentY = 0
+      end
+      diffx = endX - currentX
+      diffy = endY - currentY
+      if math.abs(diffx, diffy) > 0.01 then --an X-Y move
+         CheckAngle( math.atan2(diffx,diffy))
+      end
+   end
+   rapid2()]]
+end
+
+function OnPenUp()
+   needRapid = true
+   ClampOn(false)
+end
+--[[
+function rapid2(x,y,z)
+   post.ModalText (" G00")
+   post.ModalNumber (" X", x * scale, "0.0000")
+   post.ModalNumber (" Y", y * scale, "0.0000")
+   if(useZ) then
+      post.ModalNumber (" Z", (z + toolOffset) * scale, "0.0000")
+   end
+   post.Eol()
+end]]
+
+function CheckRapid(angle)
+   if not needRapid then return end
+   ClampOn(false)
+--post.Text("(>>>>>>>>>>>>>>>>>>>>RAPID<<<<<<<<<<<)\n")
+   needRapid = false
+
+   if cutBidir then
+      if angOffset == 0 then
+         if angle < 0 then
+            angOffset = pi
+         else
+            angOffset = -pi
+         end
+      else
+         angOffset = 0
+      end
+   end
+
+   if(useZ) then
+      post.ModalText (" G00")
+      post.ModalNumber (" Z", (safeZ + toolOffset) * scale, "0.0000")
+      post.Eol()
+   elseif knifeUp then
+      post.Text(" " .. knifeUp .. "\n")
+   end
+
+   if angle < -maxAngle then
+      angle = angle + twopi
+   end
+   if angle > maxAngle then
+      angle = angle - twopi
+   end
+
+   lastang = angle + angOffset
+   curang = lastang
+
+   post.ModalText (" G00")
+   post.ModalNumber (" X", currentX * scale, "0.0000")
+   post.ModalNumber (" Y", currentY * scale, "0.0000")
+   post.ModalNumber (" A", curang * angscale, "0.0000")
+   post.Eol()
+   if useZ then
+      post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+      post.Eol()
+   elseif knifeDown then
+      post.Text(" " .. knifeDown .. "\n")
+   end
+end
+
+
+function Reposition()
+--post.Text("(>>>>>>>>>>>>>>>>>>Reposition<<<<<<<<<<<)\n")
+   Lift()
+   Rotate()
+   Plunge()
+end
+
+function Lift()
+   if useZ then
+      numLifts = numLifts + 1
+      post.ModalText(" G00")
+      post.ModalNumber(" Z", (liftClearance + toolOffset) * scale, "0.0000")
+      post.Eol()
+   elseif knifeUp then
+      post.Text(" " .. knifeUp .. "\n")
+   end
+end
+
+function Rotate(slow)
+   angError = 0
+   if slow then
+      post.ModalText(" G01")
+   else
+      post.ModalText(" G00")
+   end
+   post.ModalNumber (" A", curang * angscale, "0.0000")
+   post.Eol()
+end
+
+function Plunge()
+   if useZ then
+      post.ModalText(" G00")
+      post.ModalNumber(" Z", endZ * scale, "0.0000")
+      post.Eol()
+   elseif knifeDown then
+      post.Text(" " .. knifeDown .. "\n")
+   end
+end
+
+
+function CheckReposition(doMove)
+   local ret = false
+   local rCt = 0
+   if(curang > maxAngle) then
+      while (curang - twopi) > -maxAngle do
+         curang = curang - twopi
+      end
+      ret = true
+   end
+   if(curang < -maxAngle) then
+      while (curang + twopi) > maxAngle do
+         curang = curang + twopi
+         rCt = rCt + 1
+      end
+      ret = true
+   end
+
+   if ret then
+      lastang = curang
+      if doMove then
+         Reposition()
+      end
+      return true
+   end
+   return false
+end
+
+function CheckAngle(ang)
+   local diff = ang - lastang
+   local diff2 = diff
+   if(diff > pi) then
+      diff = diff - twopi
+   end
+   if(diff < -pi) then
+      diff = diff + twopi
+   end
+   curang = curang + diff
+   if(CheckReposition(true)) then
+      lastang = ang
+      return true
+   end
+
+   diff = math.abs(diff) + angError
+   lastang = ang
+
+   if diff > minAngle then
+      if(diff > angThreshold) then
+         Reposition()
+         return true
+      else
+         Rotate(alignAtFeed)
+      end
+   else
+      angError = diff
+   end
+   return false
+end
+
+function OnMove()
+   local diffx = endX - currentX
+   local diffy = endY - currentY
+   
+   local len = math.hypot(diffx, diffy)
+   if(len < 0.001) then return end
+   if angOffset == 0 then
+      aLen = aLen + len
+   else
+      bLen = bLen + len
+   end
+   ClampOn(math.abs(diffx) > 1 and math.abs(diffy) < 0.01)
+
+   local angle = math.atan2(diffx,diffy)
+   CheckRapid(angle)
+   CheckAngle(angle + angOffset)
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   if useZ then
+      post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   end
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+
+
+function OnArc()
+   ClampOn(false)
+   local diffx = currentX - arcCentreX
+   local diffy = currentY - arcCentreY
+   local startang = math.atan2(diffx,diffy)
+   local arcEnd = startang
+   local radius = math.hypot(diffx,diffy)
+   if angOffset == 0 then
+      aLen = aLen + (radius * math.abs(arcAngle))
+   else
+      bLen = bLen + (radius * math.abs(arcAngle))
+   end
+
+   if(arcAngle <0) then
+      startang = startang - (pi / 2)
+      if(startang < -pi) then
+         startang = twopi + startang
+      end
+   else
+      startang = startang + (pi / 2)
+      if(startang > pi) then
+         startang = (startang - twopi)
+      end
+   end
+   CheckRapid(startang)
+   startang = startang + angOffset
+   CheckAngle(startang)
+   local angAcc = arcAngle
+   for ct=0, 20 do
+      local endAng = curang + arcAngle
+      if(math.abs(endAng) > maxAngle) then
+         if endAng > maxAngle then
+            arcAngle = arcAngle + (maxAngle - endAng)
+         else
+            arcAngle = arcAngle - (maxAngle + endAng)
+         end
+      end
+      arcEnd = arcEnd + arcAngle
+      endX = (math.sin(arcEnd) * radius) + arcCentreX
+      endY = (math.cos(arcEnd) * radius) + arcCentreY
+      DoArc()
+      currentX = endX
+      currentY = endY
+      angAcc = angAcc - arcAngle
+      arcAngle = angAcc
+      if arcAngle > 0  then
+         if angAcc < 0.001 then return end
+         curang = curang - twopi
+      else
+         if angAcc > -0.001 then return end
+         curang = curang + twopi
+      end
+      lastang = curang
+      Reposition()
+   end
+   post.Error("Unable to generate arc")
+end
+
+
+
+
+function DoArc()
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   if useZ then
+      post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   end
+   post.ModalNumber (" A", (curang + arcAngle) * angscale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+   curang = curang + arcAngle
+   lastang = lastang + arcAngle
+end
+
+
+function OnSpindleCW()
+   post.Text (" M03")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.Text (" M04")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnSpindleOff()
+   post.Text (" M05\n")
+end
+
+
+function OnToolChange()
+   --post.Text (" M6 T")
+   --post.Number (tool, "0")
+   post.Text ("  (", toolName, ")\n")
+   --post.Text (" G43 H")
+   --post.Number (tool, "0")
+   post.ModalNumber(" F",feedRate  * scale,"0.#")
+   post.Eol()
+end
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+
+function OnFloodOn()
+   post.Text(" M08 (Flood coolant on)\n")
+end
+
+function OnMistOn()
+   post.Text(" M07 (Mist coolant on)\n")
+end
+
+function OnCoolantOff()
+   post.Text(" M09 (Coolant off)\n")
+end
+
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end
+
+

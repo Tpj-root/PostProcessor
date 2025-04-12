@@ -1,0 +1,304 @@
+-- 2-3-2017 FIXED drill cycle
+-- 2-3-2017 Fixed rigid tap feed rate
+-- Revision 1-27-2017 FIX RIGID TAP
+-- Revision 18/09/09 Added tapping
+-- created 20/10/08
+-- based on HAAS VF3.post
+-- 1-7-2020 Multiple fixes: tapping, bad characters, etc. MM
+
+
+Work_Offset = "G54"
+toolOffsetNumber = 0
+post.DefineVariable("Work_Offset", sc.unitTEXT, 0, 1e17)
+post.DefineCustomOption("Program number","progNumber",sc.unit0DECPLACE,0,9999)
+post.DefineCustomToolParam("MillTool", "Offset Number", "toolOffsetNumber", sc.unit0DECPLACE, 0, 0, 50)
+post.DefineCustomToolParam("DrillTool", "Offset Number", "toolOffsetNumber", sc.unit0DECPLACE, 0, 0, 50)
+post.DefineCustomToolParam("VTool", "Offset Number", "toolOffsetNumber", sc.unit0DECPLACE, 0, 0, 50)
+post.DefineCustomToolParam("TapTool", "Offset Number", "toolOffsetNumber", sc.unit0DECPLACE, 0, 0, 50)
+post.DefineCustomToolParam("ThreadMillTool", "Offset Number", "toolOffsetNumber", sc.unit0DECPLACE, 0, 0, 50)
+post.DefineCustomToolParam("TapHeadTooll", "Offset Number", "toolOffsetNumber", sc.unit0DECPLACE, 0, 0, 50)
+
+--DefineCustomToolParam(toolClass,caption,varName,units,default,min,max)
+--MillTool=mill/router
+--DrillTool=drill
+--VTool=V cutter
+--PlasmaTool=plasma
+--CodeTool=insert g-code
+--TapHeadTooll=automatic tap
+--TapTool=rigid tap
+--FlameTool=flame
+--WaterTool=water
+--LaserTool=laser
+--ThreadMillTool=Thread mill
+--MarkerTool=Plate marker 
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("HAAS VF1 post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("uses G43 tool length offsets\n")
+end
+
+function OnInit()
+   post.ShowCustomOptions();
+   nonumbers = true
+
+   post.Text("%\n")
+   post.Text("O")
+   post.Number(progNumber, "0000")
+   post.Text(" (",fileNameOnly,")\n")
+   post.Text("\n")
+   nonumbers = nil
+   
+   post.SetCommentChars ("():", "[] ")  --make sure ( and ) characters do not appear in system text
+   -- colon is not a comment, but it causes problems so make sure it is not in code either
+   
+   post.Text (" (", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Metric)\n") --metric mode
+      numFormat = "0.000"
+   else
+      post.Text (" G20 (Inches)\n") --inch mode
+      numFormat = "0.0000"
+   end
+   post.Text (" G40 G90 G00 G17\n")
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   plungeRate = 0
+   feedRate = 0
+end
+
+function OnNewLine()
+   -- if nonumbers then return end
+   -- post.Text ("N")
+   -- post.Number (lineNumber, "0000")
+   -- lineNumber = lineNumber + 1
+end
+
+
+function OnFinish()
+   post.Text (" G90 G0 G53 Z0\n")
+   post.Text (" G53 X-10. Y0\n")   
+   post.Text (" M30\n")
+   nonumbers = true
+   post.Text("%\n")
+end
+
+function OnRapid()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, numFormat)
+   post.ModalNumber (" Y", endY * scale, numFormat)
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, numFormat)
+   post.Eol()
+end
+
+function OnMove()
+   post.ModalText (" G1")
+   post.ModalNumber (" X", endX * scale, numFormat)
+   post.ModalNumber (" Y", endY * scale, numFormat)
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, numFormat)
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText (" G3")
+   else
+      post.ModalText (" G2")
+   end
+   post.NonModalNumber (" X", endX * scale, numFormat)
+   post.NonModalNumber (" Y", endY * scale, numFormat)
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, numFormat)
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, numFormat)
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, numFormat)
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+
+function OnSpindleCW()
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   if (toolClass ~= "TapTool") then
+      post.Text (" M3")
+   end
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   if (toolClass ~= "TapTool") then
+      post.Text (" M4")
+   end
+   post.Eol()
+end
+
+function OnSpindleOff()
+   post.Text (" M5\n")
+end
+
+
+function OnNewOperation()
+   post.Text (" (", operationName, ")\n")
+   if (operationClass ~= "VariableOperation") then
+      post.Text (" ", Work_Offset, "\n")
+   end
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnComment()
+  post.Text(" (",commentText,")\n")
+end
+
+function OnToolChange()
+   post.Text (" G91 G28 Z0\n")
+   post.Text (" G80 G00 G90")
+   post.Eol()
+   post.Text (" M1\n")
+   post.Text (" T")
+   post.Number (tool, "0")
+   post.Text (" M6")
+   post.Text ("  (",toolName, ")\n")
+   post.Text (" G43 H")
+   
+   if (toolOffsetNumber == 0) then
+      post.Number (tool, "0")
+   else
+      post.Number (toolOffsetNumber, "0")
+   end
+   post.Eol()
+end
+
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+
+function OnNewPart()
+  -- post.Text(" (Part: ",partName,")\n");
+end
+
+
+function OnFloodOn()
+   post.Text(" M8 \n")
+end
+
+function OnMistOn()
+   post.Text(" M7 \n")
+end
+
+function OnCoolantOff()
+   post.Text(" M9 \n")
+end
+
+function OnDrill()
+   clearance = 2.54 --tapping clearance height (.1 inches)
+
+   --move to tapping clearance height
+   clearance = clearance + drillStart
+   endZ = clearance
+   
+   post.ModalText(" G83")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", drillZ * scale, "0.0000")
+   post.ModalNumber (" R", endZ * scale, "0.000")
+   post.ModalNumber (" Q", drillPeck * scale, "0.0000")
+--   post.ModalNumber (" Q", endZ * scale, "0.000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol();
+end
+
+
+function OnSetFeed()
+end
+
+function OnTapStart()
+--   post.Text(" M49\n") --disable FRO
+--  post.Text(" G95\n") --feed per rev
+   tapPitch = 25.4 / tapPitch
+   
+end
+
+function OnAutoTap()
+   clearance = 1 --tapping clearance height
+
+--move to hole X,Y coordinates
+   OnRapid()
+
+--move to tapping clearance height
+   clearance = clearance + drillStart
+   endZ = clearance
+   OnRapid()
+
+--feed to depth
+   feedRate = tapPitch * underFeed
+   OnSetFeed()
+   endZ = drillZ
+   OnMove()
+
+--retract to engage reverse clutch
+   endZ = drillZ + tapTravel
+   feedRate = 10000
+   OnMove()
+
+--feed out
+   feedRate = tapPitch * reverseMult * underFeed
+   endZ = tapTravel + clearance
+   OnMove()
+
+--retract to clearance plane
+   endZ = safeZ
+   OnRapid()
+
+end
+
+function OnRigidTap()
+-- fixed format 4 decimal places
+   
+   clearance = 6.35 --tapping clearance height (.25 inches)
+   clearance = clearance + drillStart
+   endZ = clearance
+   
+   --post.Text("spindleSpeed ", spindleSpeed, "\n")
+   --post.Text("tapPitch ", tapPitch,  "\n")
+   --post.Text("scale ", scale, "\n")
+    
+   post.ModalText(" G84")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" R", endZ * scale, "0.000")
+   post.ModalNumber (" Z", drillZ * scale, "0.0000")
+   -- post.Text(" J")
+   -- post.Number(reverseMult + 0.5 , "0")
+   post.ModalNumber(" F", (spindleSpeed/tapPitch), "0.000")
+   post.Eol();
+end
+
+function OnTapEnd()
+   --post.Text(" G80") --cancel G84
+  -- post.ModalNumber (" Z", safeZ * scale, "0.000")
+   
+--   post.Text(" G94\n") --feed per min
+end
+
+function OnDrillEnd()
+  -- post.Text(" G80") --cancel G84
+   --post.ModalNumber (" Z", safeZ * scale, "0.000")
+   
+end
+

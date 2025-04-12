@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<resource xmlns="http://www.wxwidgets.org/wxxrc">
+	<object class="wxPanel" name="OptionsPanel">
+		<object class="wxBoxSizer">
+			<orient>wxVERTICAL</orient>
+			<object class="sizeritem">
+				<object class="wxStaticText" name="ID_STATICTEXT1">
+					<label>Simulation plugin</label>
+					<font>
+						<weight>bold</weight>
+						<family>decorative</family>
+						<sysfont>wxSYS_DEFAULT_GUI_FONT</sysfont>
+						<relativesize>1.000000</relativesize>
+					</font>
+				</object>
+				<flag>wxTOP|wxLEFT|wxRIGHT|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL</flag>
+				<border>5d</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxBoxSizer">
+					<object class="sizeritem">
+						<object class="wxStaticBoxSizer">
+							<label>Special options</label>
+							<orient>wxVERTICAL</orient>
+							<object class="sizeritem">
+								<object class="wxFlexGridSizer">
+									<cols>2</cols>
+									<vgap>3d</vgap>
+									<hgap>3d</hgap>
+									<object class="sizeritem">
+										<object class="wxStaticText" name="ID_STATICTEXT2">
+											<label>Update rate</label>
+										</object>
+										<flag>wxALL|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+									</object>
+									<object class="sizeritem">
+										<object class="wxTextCtrl" name="ID_FRAMERATE" subclass="UnitCtrl" />
+										<flag>wxEXPAND</flag>
+									</object>
+									<object class="sizeritem">
+										<object class="wxStaticText" name="ID_STATICTEXT3">
+											<label>Rapid feed</label>
+										</object>
+										<flag>wxALL|wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+									</object>
+									<object class="sizeritem">
+										<object class="wxTextCtrl" name="ID_RAPIDFEED" subclass="UnitCtrl" />
+										<flag>wxEXPAND</flag>
+									</object>
+									<object class="sizeritem">
+										<object class="wxStaticText" name="ID_STATICTEXT9">
+											<label>Maximum FRO</label>
+										</object>
+										<flag>wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+										<border>5</border>
+									</object>
+									<object class="sizeritem">
+										<object class="wxTextCtrl" name="ID_MAXFRO" subclass="UnitCtrl" />
+										<flag>wxEXPAND</flag>
+										<border>5</border>
+									</object>
+									<object class="sizeritem">
+										<object class="wxStaticText" name="ID_STATICTEXT10">
+											<label>Tool polygon detail</label>
+										</object>
+										<flag>wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+										<border>5</border>
+									</object>
+									<object class="sizeritem">
+										<object class="wxSlider" name="ID_POLYDETAIL">
+											<value>1</value>
+											<max>4</max>
+										</object>
+										<flag>wxEXPAND</flag>
+										<border>5</border>
+									</object>
+								</object>
+								<flag>wxALL|wxEXPAND</flag>
+								<option>1</option>
+							</object>
+							<object class="sizeritem">
+								<object class="wxStaticText" name="ID_STATICTEXT4">
+									<label>Note: increasing the update rate&#x0A;makes movement smoother &#x0A;but uses more CPU power.&#x0A;&#x0A;Increasing the polygon detail&#x0A;makes the tool outline smoother &#x0A;but uses more CPU power.</label>
+								</object>
+								<flag>wxTOP|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL</flag>
+								<border>3d</border>
+							</object>
+						</object>
+						<flag>wxALL|wxEXPAND</flag>
+						<border>3d</border>
+					</object>
+					<object class="sizeritem">
+						<object class="wxBoxSizer">
+							<orient>wxVERTICAL</orient>
+							<object class="sizeritem">
+								<object class="wxStaticBoxSizer">
+									<label>Tool colours</label>
+									<orient>wxVERTICAL</orient>
+									<object class="sizeritem">
+										<object class="wxFlexGridSizer">
+											<cols>2</cols>
+											<vgap>3d</vgap>
+											<hgap>3d</hgap>
+											<object class="sizeritem">
+												<object class="wxStaticText" name="ID_STATICTEXT8">
+													<label>Spindle off/jet off</label>
+												</object>
+												<flag>wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+												<border>5</border>
+											</object>
+											<object class="sizeritem">
+												<object class="wxColourPickerCtrl" name="ID_COLOFF" />
+												<flag>wxEXPAND</flag>
+												<border>5</border>
+											</object>
+											<object class="sizeritem">
+												<object class="wxStaticText" name="ID_STATICTEXT7">
+													<label>Spindle CW/jet preheat</label>
+												</object>
+												<flag>wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+												<border>5</border>
+											</object>
+											<object class="sizeritem">
+												<object class="wxColourPickerCtrl" name="ID_COLCW" />
+												<flag>wxEXPAND</flag>
+												<border>5</border>
+												<option>1</option>
+											</object>
+											<object class="sizeritem">
+												<object class="wxStaticText" name="ID_STATICTEXT5">
+													<label>Spindle CCW/jet cutting</label>
+												</object>
+												<flag>wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+											</object>
+											<object class="sizeritem">
+												<object class="wxColourPickerCtrl" name="ID_COLCCW" />
+												<flag>wxEXPAND</flag>
+												<border>0d</border>
+											</object>
+										</object>
+										<flag>wxALL|wxEXPAND</flag>
+									</object>
+								</object>
+								<flag>wxALL|wxEXPAND</flag>
+								<border>3d</border>
+							</object>
+							<object class="sizeritem">
+								<object class="wxStaticBoxSizer">
+									<label>Tool diameter</label>
+									<orient>wxVERTICAL</orient>
+									<object class="sizeritem">
+										<object class="wxFlexGridSizer">
+											<cols>2</cols>
+											<vgap>3d</vgap>
+											<hgap>3d</hgap>
+											<object class="sizeritem">
+												<object class="wxStaticText" name="ID_STATICTEXT6">
+													<label>Scale size</label>
+												</object>
+												<flag>wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+												<border>3</border>
+											</object>
+											<object class="sizeritem">
+												<object class="wxTextCtrl" name="ID_TOOLDIA" subclass="UnitCtrl" />
+												<flag>wxEXPAND</flag>
+											</object>
+											<object class="sizeritem">
+												<object class="wxStaticText" name="ID_STATICTEXT11">
+													<label>Minimum size</label>
+												</object>
+												<flag>wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+											</object>
+											<object class="sizeritem">
+												<object class="wxTextCtrl" name="ID_TOOLSIZE" subclass="UnitCtrl" />
+												<flag>wxEXPAND</flag>
+											</object>
+										</object>
+										<flag>wxALL|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL</flag>
+									</object>
+								</object>
+								<flag>wxALL|wxEXPAND</flag>
+								<border>3d</border>
+							</object>
+							<object class="sizeritem">
+								<object class="wxStaticBoxSizer">
+									<label>Machine type</label>
+									<object class="sizeritem">
+										<object class="wxChoice" name="ID_MACHINETYPE" />
+										<flag>wxALL|wxEXPAND</flag>
+										<border>3d</border>
+									</object>
+								</object>
+								<flag>wxALL|wxEXPAND</flag>
+								<border>5</border>
+							</object>
+						</object>
+						<flag>wxEXPAND</flag>
+						<border>5</border>
+					</object>
+				</object>
+				<flag>wxALL|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL</flag>
+				<border>5</border>
+				<option>1</option>
+			</object>
+		</object>
+	</object>
+</resource>

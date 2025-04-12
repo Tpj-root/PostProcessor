@@ -1,0 +1,434 @@
+post.DefineVariable("angThreshold",sc.unitANGULAR,0,2)
+post.DefineVariable("liftClearance",sc.unitLINEAR,0,1e17)
+
+--[[ 
+You must create a file called c:\mach3\Subroutines\init.tap and copy the 
+following code into it (excluding the'start of code' and 'end of code' lines)
+-----START OF CODE-----
+;offsets for tools 100-199
+#1 = 10  ;X
+#2 = 1   ;Y
+#3 = 100 ;Z
+
+;offsets for tools 200-299
+#4 = -10  ;X
+#5 = -1   ;Y
+#6 = -100 ;Z
+
+;;;;;;;;;;You should not need to change any of this ;;;;;;;;;;;;
+
+G54
+G10 L2 P2 X[#5221 - #1] Y[#5222 - #2]  Z[#5223 - #3]
+G10 L2 P3 X[#5221 - #4] Y[#5222 - #5]  Z[#5223 - #6]
+M99
+
+-----END OF CODE-----
+
+Set the X,Y,Z parameters in the file to suit your machine.
+]]
+
+-----------------CONFIGURATION STARTS HERE--------------------------
+
+--- Angles below this threshold do not trigger a lift
+angThreshold = 0.2 --note this angle is in radians. 0.2 rad is approx 12 degrees 
+
+-- This is how high the tool is lifted to turn (in millimetres).
+liftClearance = 0.5
+
+--Set the following values to define the codes for tool down and tool up
+--tools 1-99
+tool1Down = "M03"
+tool1Up = "M05"
+tool1Axis = "A"  --set this to the rotary axis for this tool. Use nil if this tool does not rotate
+tool1UsesZ = false --set this true if this is mounted on a motorized Z axis
+
+--tools 100-199
+tool2Down = "M04"
+tool2Up = "M05"
+tool2Axis = "A"  --set this to the rotary axis for this tool. Use nil if this tool does not rotate
+tool2UsesZ = false --set this true if this is mounted on a motorized Z axis
+
+--tools 200-299
+tool3Down = "M07"
+tool3Up = "M09"
+tool3Axis = nil  --set this to the rotary axis for this tool. Use nil if this tool does not rotate
+tool3UsesZ = false --set this true if this is mounted on a motorized Z axis
+
+-------------------END OF CONFIGURATION-----------------------------
+
+
+
+
+
+
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Mach3 post processor with tangential knife\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("uses G43 tool length offsets\n")
+   ctrl:AppendText("Tool angle is in degrees\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Post variables:\n")
+   ctrl:AppendText("angThreshold - The tool will not lift for angles below this value\n")
+   ctrl:AppendText("liftClearance - This is how high the tool is lifted before rotating\n")
+
+end
+
+
+
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   post.Text (" G91.1 (incremental IJ mode)\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G53 G40 G90\n F1\n")
+   post.Text (" M98 (init.tap)\n");
+   
+   toolUp = " " .. tool1Up
+   toolDown = " " .. tool1Down
+   toolAxis = tool1Axis
+   usesZ = tool1UsesZ
+   
+   pi = 3.1415926535897932384626433832795
+   twopi = 2 * pi
+   angscale = 180 / pi
+   lastang = -100
+   curang = 0
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   penDown = false
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+--[[
+   endZ = safeZ
+   OnRapid()
+   endX = 0
+   endY = 0
+   OnRapid()
+]]
+   post.Text (" G54\n G49\n M05 M09 M30\n")
+end
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0###")
+   post.ModalNumber (" Y", endY * scale, "0.0###")
+--[[   if(usesZ) then
+      post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0###")
+   end]]
+   post.Eol()
+end
+
+function OnPenUp()
+   PenUp(safeZ)
+end
+
+function PenUp(z)
+   if(not penDown) then return end
+   penDown = false
+   if(usesZ) then
+      post.ModalText (" G00")
+      post.ModalNumber (" Z", (z + toolOffset) * scale, "0.0###")
+      post.Eol()
+   else
+      post.Text(toolUp .. "\n")
+   end
+end
+
+function PenDown(z)
+   if(penDown) then return end
+   penDown = true
+   if(usesZ) then
+      post.ModalText (" G00")
+      post.ModalNumber (" Z", (z + toolOffset) * scale, "0.0###")
+      post.Eol()
+   else
+      post.Text(toolDown .. "\n")
+   end
+end
+
+function checkangle(ang)
+   if(toolAxis == nil) then 
+      return 
+   end
+   if(not penDown) then
+      if(ang > twopi) then ang = ang - twopi end
+      if(ang < -twopi) then ang = ang + twopi end
+      post.ModalText (" G00")
+      post.ModalNumber (" " .. toolAxis, ang * angscale, "0.0###")
+      post.Eol()
+      PenDown(currentZ)
+      lastang = ang
+      curang = ang
+      return
+   end
+
+   if(ang ~= lastang) then
+      diff = ang - lastang
+      if(diff > pi) then
+         diff = (pi * 2) - diff
+      end
+      if(diff < -pi) then
+         diff = (pi * 2) + diff
+      end
+      if(math.abs(diff) > angThreshold) then
+         PenUp(liftClearance)
+         post.ModalText (" G00")
+         post.ModalNumber (" " .. toolAxis, ang * angscale, "0.0###")
+         post.Eol()
+         PenDown(currentZ)
+         lastang = ang
+         curang = ang
+      else
+--         if (math.abs(diff) > 0.001) then
+            curang = curang + diff
+            post.ModalText (" G00")
+            post.ModalNumber (" " .. toolAxis, curang * angscale, "0.0###")
+            post.Eol()
+            lastang = ang
+--         end
+      end
+   end
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.001) then return end
+   if(toolAxis == nil) then
+      move2()
+      return
+   end
+   diffx = endX - currentX
+   diffy = endY - currentY
+   if(diffx ==0 and diffy ==0) then
+      return -- nothing to do
+   end
+   checkangle( math.atan2(diffx,diffy) + pi)
+   move2()
+end
+
+function move2()
+   PenDown(currentZ)
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0###")
+   post.ModalNumber (" Y", endY * scale, "0.0###")
+   if(usesZ) then
+      post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0###")
+   end
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function normalise(ang)
+   if(ang< 0) then
+      return (ang + (pi *2))
+   end
+   if(ang> twopi) then
+      return (ang - (pi *2))
+   end
+   return(ang)
+end
+
+
+function OnArc()
+   if(toolAxis == nil) then
+      PenDown(currentZ)
+      if(arcAngle <0) then
+         post.ModalText (" G03")
+      else
+         post.ModalText (" G02")
+      end
+      post.ModalNumber (" X", endX * scale, "0.0###")
+      post.ModalNumber (" Y", endY * scale, "0.0###")
+      if(usesZ) then
+         post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0###")
+      end
+      post.Text (" I")
+      post.Number ((arcCentreX - currentX) * scale, "0.0###")
+      post.Text (" J")
+      post.Number ((arcCentreY - currentY) * scale, "0.0###")
+      post.ModalNumber (" F", feedRate * scale, "0.0###")
+      post.ModalNumber (" S", spindleSpeed, "0.##")
+      post.Eol()
+      return
+   end
+
+   diffx = currentX - arcCentreX
+   diffy = currentY - arcCentreY
+   startang = math.atan2(diffx,diffy) + pi
+   if(arcAngle <0) then
+      startang = startang - (pi/2)
+   else
+      startang = startang + (pi/2)
+   end
+   checkangle(startang)
+   lastang = lastang + arcAngle
+   curang = curang + arcAngle
+
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.ModalNumber (" X", endX * scale, "0.0###")
+   post.ModalNumber (" Y", endY * scale, "0.0###")
+   if(usesZ) then
+      post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0###")
+   end
+   post.ModalNumber (" " .. toolAxis, curang * angscale, "0.0###")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0###")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0###")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+--[[
+function OnSpindleCW()
+   post.Text (" M03")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.Text (" M04")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.Eol()
+end
+
+function OnSpindleOff()
+   post.Text (" M05\n")
+end
+]]
+
+function OnNewOperation()
+   post.Text (" (Operation: ", operationName, ")\n")
+   if (plungeRate <= 0) then
+      post.Warning("WARNING: Plunge rate is zero")
+   end
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnToolChange()
+   PenUp(safeZ)
+   post.Text (" M6 T")
+   post.Number (tool, "0")
+   post.Text ("  (", toolName, ")\n")
+   post.Text (" G43 H")
+   post.Number (tool, "0")
+   post.Eol()
+   if(usesZ) then
+      post.ModalText(" G00")
+      post.ModalNumber (" Z", (safeZ + toolOffset) * scale, "0.0###")
+      post.Eol()
+   end
+   post.ModalNumber(" F",feedRate  * scale,"0.0###")
+   if(tool < 100) then
+      post.Text("\n G54")
+      toolUp = " " .. tool1Up
+      toolDown = " " .. tool1Down
+      toolAxis = tool1Axis
+      usesZ = tool1UsesZ
+   else
+      if(tool < 200) then
+         post.Text("\n G55")
+         toolUp = " " .. tool2Up
+         toolDown = " " .. tool2Down
+         toolAxis = tool2Axis
+         usesZ = tool2UsesZ
+      else
+         post.Text("\n G56")
+         toolUp = " " .. tool3Up
+         toolDown = " " .. tool3Down
+         toolAxis = tool3Axis
+         usesZ = tool3UsesZ
+      end
+   end
+   if(usesZ) then
+      post.Text(toolDown)
+   end
+   post.Eol()
+end
+
+--[[
+function OnSpindleChanged()
+   if (spindleSpeed <= 0) then
+      post.Warning("WARNING: Spindle speed is zero")
+   end
+end
+]]
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+--[[
+
+function OnFloodOn()
+   post.Text(" M08 (Flood coolant on)\n")
+end
+
+function OnMistOn()
+   post.Text(" M07 (Mist coolant on)\n")
+end
+
+function OnCoolantOff()
+   post.Text(" M09 (Coolant off)\n")
+end
+
+function OnDrill()
+   OnRapid()
+   depth = drillStart
+   buffer = plungeSafety
+   endZ = depth + buffer
+   OnRapid()
+   if(drillRetract < buffer) then
+     buffer = drillRetract
+   end
+   while depth > drillZ do
+      OnRapid()
+      depth = depth - drillPeck
+      if (depth < drillZ) then
+         depth = drillZ
+      end
+      endZ = depth
+      OnMove()
+      if (depth > drillZ) then --retract if we need to take another bite
+         endZ = endZ + drillRetract
+         if (endZ > safeZ) then
+            endZ = safeZ
+         end
+         OnRapid()
+      end
+      endZ = depth + buffer
+   end
+   if (endZ < safeZ) then
+      endZ = safeZ
+      OnRapid()
+   end
+end
+]]

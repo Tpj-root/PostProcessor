@@ -1,0 +1,138 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("LINDE UNION CARBIDE CM-360 post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Non modal G-codes\n")
+   ctrl:AppendText("Modal coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+end
+
+
+
+--   created 3/12/08
+--   Based on Burny25 inc.post
+
+
+
+function OnInit()
+   nolines = 1
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text ("(Filename: ", fileName, ")\n")
+   post.Text ("(Post processor: ", postName, ")\n")
+   post.Text ("(Date: ", date, ")\n")
+   post.Text ("%\n")
+   lineNumber =1
+   nolines = nil
+
+--   if(scale == metric) then
+--      text ("G71 (Units: Metric)\n") --metric mode
+--   else
+--      text ("G70 (Units: Inches)\n") --inch mode
+--   end
+   post.Text ("G91\nM69\n")
+   bigArcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+   firstmove = 1
+   curx =0
+   cury =0
+end
+
+function OnNewLine()
+   if(nolines) then return end
+   post.Text ("N")
+   post.Number (lineNumber, "#")
+   lineNumber = lineNumber + 1
+end
+
+
+function OnFinish()
+   endX = 0
+   endY = 0
+   OnRapid()
+   nolines = 1
+   post.Text ("%\n")
+end
+
+
+function OnRapid()
+   if(firstmove) then
+      firstmove = nil
+      return
+   end
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText("G11");
+   doxy()
+   post.Text("R\n")
+end
+
+function OnMove()
+   if (math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText("G11")
+   doxy()
+   post.Eol()
+end
+
+function doxy()
+   tmp = (endX * scale) - curx
+   tmp = math.toint(tmp * 1000)/1000
+   curx = curx + tmp
+   if(tmp ~=0) then
+      post.NonModalNumber("X",tmp,"0.0##")
+   end
+
+   tmp = (endY * scale) - cury
+   tmp = math.toint(tmp * 1000)/1000
+   cury = cury + tmp
+   if(tmp ~=0) then
+      post.NonModalNumber("Y",tmp,"0.0##")
+   end
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText ("G13")
+   else
+      post.ModalText ("G12")
+   end
+   doxy()
+   if((arcCentreX - currentX) ~=0) then
+      post.NonModalNumber ("I", (arcCentreX - currentX) * scale, "0.0##")
+   end
+   if((arcCentreY - currentY) ~=0) then
+      post.NonModalNumber ("J", (arcCentreY - currentY) * scale, "0.0##")
+   end
+   post.Eol()
+end
+
+function OnPenDown()
+   post.Text("M70\n")
+end
+
+function OnPenUp()
+   post.Text("M73\n")
+end
+
+
+function OnNewOperation()
+--   text ("(Operation: ", processname, ")\n")
+end
+
+function OnComment()
+  post.Text("(",commentText,")\n")
+end
+
+
+function OnNewPart()
+--   text("(Part: ",partname,")\n");
+end
+
+function OnDrill()
+   OnRapid()
+   OnPenDown()
+   endZ = drillZ
+   OnMove()
+   OnPenUp()
+   endZ = safeZ
+   OnRapid()
+end

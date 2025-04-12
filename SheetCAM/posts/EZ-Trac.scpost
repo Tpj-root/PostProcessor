@@ -1,0 +1,149 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("EZ-Trac post processor\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("No Z axis controls\n")
+   ctrl:AppendText("No spindle\n")
+   ctrl:AppendText("Uses EZ-Trac code, not G-code\n")
+end
+
+
+--  revision 9/5/08
+--  Added drilling
+
+--  revision 3/2/07
+--  Removed final safety move. This is now done in SheetCam
+
+--   revision 7/10/05
+--   Added new arc handling
+
+--   revision 28/6/04
+--   Replaced startx,y,z with currentx,y,z
+
+--   modified 5/5/04 to change the way signs are displayed
+--   modified 22/5/04 to add G102/103
+--   modified 19/5/04 to remove unwanted M codes
+--   Created 18/5/04
+
+
+
+function OnInit()
+   shownumber = false
+   post.SetCommentChars(" ()","_[]");
+   post.Text ("PN",fileNameOnly);
+   if(scale == metric) then
+      post.Text (" G21;\n") --metric mode
+   else
+      post.Text (" G20;\n") --inch mode
+   end
+   shownumber = true
+   lineready = false
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   if(shownumber) then
+      post.Text ("N")
+      post.Number (lineNumber, "0000")
+      lineNumber = lineNumber + 10
+   end
+end
+
+
+function OnFinish()
+   shownumber = false
+   post.Text ("%\n")
+end
+
+function OnRapid()
+   if (lineready) then
+      post.Text ("A TC0 F")
+      post.Number (feedRate * scale,"0.00")
+      post.Text (" D0 CR-0 T")
+      post.Number (tool, "0")
+      post.Text (";\n")
+      lineready = false
+   end
+end
+
+function goxy()
+   post.Text (" XB")
+   post.Number(currentX * scale, "+0.0000")
+   post.Text ("A YB")
+   post.Number(currentY * scale, "+0.0000")
+   post.Text ("A XE")
+   post.Number(endX * scale, "+0.0000")
+   post.Text ("A YE")
+   post.Number(endY * scale, "+0.0000")
+end
+
+
+function checkend()
+   if (lineready) then
+      post.Text ("A TC0 F")
+      post.Number (feedRate * scale,"0.00")
+      post.Text (" D0 CR0 T")
+      post.Number (tool, "0")
+      post.Text (";\n")
+      lineready = false
+   end
+end
+
+
+function OnMove()
+   if(math.hypot(currentX - endX, currentY -endY) * scale < 0.0001) then --ignore plunge or very short move
+return
+   end
+   checkend()
+   post.Text(" G101")
+   goxy()
+   lineready = true
+end
+
+function OnArc()
+   checkend()
+
+   if(arcAngle <0) then
+      post.Text(" G103")
+   else
+      post.Text(" G102")
+   end
+   goxy()
+   post.Text (" XC")
+   post.Number(arcCentreX * scale, "+0.0000")
+   post.Text ("A YC")
+   post.Number(arcCentreY * scale, "+0.0000")
+   lineready = true
+end
+
+
+function OnSpindleCW()
+end
+
+function OnSpindleCCW()
+end
+
+function OnSpindleOff()
+end
+
+
+function OnNewOperation()
+end
+
+
+function OnToolChange()
+   shownumber = false
+   post.Text ("(", toolName, ");\n")
+   shownumber = true
+end
+
+function OnDrill()
+   post.Text (" G100 X")
+   post.Number(endX * scale, "+0.0000")
+   post.Text ("A Y")
+   post.Number(endY * scale, "+0.0000")
+   post.Text ("A T")
+   post.Number (tool,"0")
+   post.Text (";\n")
+end

@@ -1,0 +1,258 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Plane CNC with tangential knife\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Modal G-codes and coordinates\n")
+   ctrl:AppendText("Comments enclosed with ( and )\n")
+   ctrl:AppendText("Incremental IJ\n")
+   ctrl:AppendText("Knife angle is in degrees\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Post variables:\n")
+   ctrl:AppendText("angThreshold - The tool will not lift for angles below this value\n")
+   ctrl:AppendText("liftClearance - This is how high the tool is lifted before rotating\n")
+
+end
+
+post.DefineVariable("angThreshold",sc.unitANGULAR,0,math.pi)
+post.DefineVariable("liftClearance",sc.unitLINEAR,0,1e17)
+
+
+
+-- Created 6/2/05 based on Mach2.post
+
+--- Angles below this threshold do not trigger a lift
+angThreshold = 0.2 --note this angle is in radians
+-- This is how high the tool is lifted to turn (in millimetres).
+liftClearance = 0.5
+
+
+
+function OnInit()
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   post.Text (" (Filename: ", fileName, ")\n")
+   post.Text (" (Post processor: ", postName, ")\n")
+   post.Text (" (Date: ", date, ")\n")
+   if(scale == metric) then
+      post.Text (" G21 (Units: Metric)\n") --metric mode
+   else
+      post.Text (" G20 (Units: Inches)\n") --inch mode
+   end
+   post.Text (" G40 G90\n F1\n")
+
+   pi = math.pi
+   twopi = 2 * pi
+   angscale = 180 / pi
+   needplunge = 0
+   lastang = -100
+   curang = 0
+   post.Eol()
+   bigarcs = 1 --stitch arc segments together
+   minArcSize = 0.05 --arcs smaller than this are converted to moves
+end
+
+function OnNewLine()
+   post.Text ("N")
+   post.Number (lineNumber, "0000")
+   lineNumber = lineNumber + 10
+end
+
+
+function OnFinish()
+   endZ = safeZ
+   OnRapid()
+   endX = 0
+   endY = 0
+   OnRapid()
+   post.Text (" M05 M30\n")
+end
+
+function OnRapid()
+   if (endZ < currentZ) then
+      needplunge = 1
+      return
+   end
+   rapid2()
+end
+
+function rapid2()
+   post.ModalText (" G00")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.Eol()
+end
+
+function checkangle(ang)
+   if(needplunge ==1) then
+      if(ang > twopi) then ang = ang - twopi end
+      if(ang < -twopi) then ang = ang + twopi end
+      post.ModalText (" G00")
+      post.ModalNumber (" A", ang * angscale, "0.0000")
+      post.Eol()
+      post.ModalText (" G00")
+      post.ModalNumber (" Z", (currentZ + toolOffset) * scale, "0.0000")
+      lastang = ang
+      curang = ang
+      post.Eol()
+      needplunge = 0
+      return
+   end
+
+   if(ang ~= lastang) then
+      diff = ang - lastang
+      if(diff > pi) then
+         diff = (pi * 2) - diff
+      end
+      if(diff < -pi) then
+         diff = (pi * 2) + diff
+      end
+      if(math.abs(diff) > angThreshold) then
+         post.ModalText (" G00")
+         post.ModalNumber (" Z", (liftClearance + toolOffset) * scale, "0.0000")
+         post.Eol()
+         post.ModalText (" G00")
+         post.ModalNumber (" A", ang * angscale, "0.0000")
+         post.Eol()
+         post.ModalText (" G00")
+         post.ModalNumber (" Z", (currentZ + toolOffset) * scale, "0.0000")
+         post.Eol()
+         lastang = ang
+         curang = ang
+      else
+         if (math.abs(diff) > 0.001) then
+            curang = curang + diff
+            post.ModalText (" G00")
+            post.ModalNumber (" A", curang * angscale, "0.0000")
+            post.Eol()
+            lastang = ang
+         end
+      end
+   end
+end
+
+function OnMove()
+   if (endZ < currentZ) then
+      needplunge = 1
+      return
+   end
+   diffx = endX - currentX
+   diffy = endY - currentY
+   if(diffx ==0 and diffy ==0) then
+      return -- nothing to do
+   end
+   checkangle( math.atan2(diffx,diffy) + pi)
+   move2()
+end
+
+function move2()
+   post.ModalText (" G01")
+   post.ModalNumber (" X", endX * scale, "0.0000")
+   post.ModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+
+function normalise(ang)
+   if(ang< 0) then
+      return (ang + (pi *2))
+   end
+   if(ang> twopi) then
+      return (ang - (pi *2))
+   end
+   return(ang)
+end
+
+function OnArc()
+    post.ArcAsMoves(0.1)
+end
+
+--[[
+function OnArc()
+   diffx = currentX - arcCentreX
+   diffy = currentY - arcCentreY
+   startang = math.atan2(diffx,diffy) + pi
+   if(arcAngle <0) then
+      startang = startang - (pi/2)
+   else
+      startang = startang + (pi/2)
+   end
+   checkangle(startang)
+   lastang = lastang + arcAngle
+   curang = curang + arcAngle
+
+   if(arcAngle <0) then
+      post.ModalText (" G03")
+   else
+      post.ModalText (" G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0000")
+   post.NonModalNumber (" Y", endY * scale, "0.0000")
+   post.ModalNumber (" Z", (endZ + toolOffset) * scale, "0.0000")
+   post.ModalNumber (" A", curang * angscale, "0.0000")
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+   post.ModalNumber (" F", feedRate * scale, "0.0###")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.Eol()
+end
+]]
+
+function OnSpindleCW()
+   post.Text (" M03")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnSpindleCCW()
+   post.Text (" M04")
+   post.ModalNumber (" S", spindleSpeed, "0.##")
+   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnSpindleOff()
+   post.Text (" M05\n")
+end
+
+
+function OnToolChange()
+--[[   post.Text (" M6 T")
+   post.Number (tool, "0")
+   post.Text ("  (", toolName, ")\n")
+   post.Text (" G43 H")
+   post.Number (tool, "0")
+   post.ModalNumber(" F",feedRate  * scale,"0.#")
+   post.Eol()]]
+end
+
+function OnSpindleChanged()
+end
+
+function OnNewPart()
+   post.Text(" (Part: ",partName,")\n");
+end
+
+
+function OnFloodOn()
+   post.Text(" M08 (Flood coolant on)\n")
+end
+
+function OnMistOn()
+   post.Text(" M07 (Mist coolant on)\n")
+end
+
+function OnCoolantOff()
+   post.Text(" M09 (Coolant off)\n")
+end
+
+
+function OnDrill()
+
+end
+

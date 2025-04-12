@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<resource xmlns="http://www.wxwidgets.org/wxxrc">
+	<object class="wxPanel" name="sim">
+		<object class="wxBoxSizer">
+			<orient>wxVERTICAL</orient>
+			<object class="sizeritem">
+				<object class="wxButton" name="ID_BTNSETUP">
+					<label>Setup</label>
+				</object>
+				<flag>wxTOP|wxLEFT|wxRIGHT|wxALIGN_CENTER_HORIZONTAL</flag>
+				<border>3d</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxStaticText" name="ID_FROTEXT">
+					<label>FRO 100.0%</label>
+				</object>
+				<flag>wxTOP|wxALIGN_CENTER_HORIZONTAL</flag>
+				<border>9d</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxSlider" name="ID_SLDSPEED">
+					<value>100</value>
+					<min>1</min>
+					<max>500</max>
+				</object>
+				<flag>wxEXPAND</flag>
+				<border>5d</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxButton" name="ID_BTNSTART">
+					<label>Start</label>
+				</object>
+				<flag>wxALIGN_CENTER_HORIZONTAL</flag>
+				<border>5</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxToggleButton" name="ID_BTNSTEP">
+					<label>Single step</label>
+				</object>
+				<flag>wxALL|wxALIGN_CENTER_HORIZONTAL</flag>
+				<border>2d</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxButton" name="ID_BTNPAUSE">
+					<label>Pause</label>
+					<enabled>0</enabled>
+				</object>
+				<flag>wxALL|wxALIGN_CENTER_HORIZONTAL</flag>
+				<border>2d</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxButton" name="ID_BTNSTOP">
+					<label>Stop</label>
+					<enabled>0</enabled>
+				</object>
+				<flag>wxALIGN_CENTER_HORIZONTAL</flag>
+				<border>5</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxStaticBoxSizer">
+					<label>Position and time</label>
+					<object class="sizeritem">
+						<object class="wxFlexGridSizer">
+							<cols>2</cols>
+							<vgap>3d</vgap>
+							<hgap>1</hgap>
+							<object class="sizeritem">
+								<object class="wxStaticText" name="ID_STATICTEXT2">
+									<label>X</label>
+								</object>
+								<flag>wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+								<border>5</border>
+							</object>
+							<object class="sizeritem">
+								<object class="wxTextCtrl" name="ID_POSX" subclass="UnitCtrl">
+									<style>wxTE_READONLY</style>
+								</object>
+								<flag>wxALIGN_LEFT|wxALIGN_CENTER_VERTICAL</flag>
+								<border>5</border>
+							</object>
+							<object class="sizeritem">
+								<object class="wxStaticText" name="ID_STATICTEXT3">
+									<label>Y</label>
+								</object>
+								<flag>wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+								<border>5</border>
+							</object>
+							<object class="sizeritem">
+								<object class="wxTextCtrl" name="ID_POSY" subclass="UnitCtrl">
+									<style>wxTE_READONLY</style>
+								</object>
+								<flag>wxALIGN_LEFT|wxALIGN_CENTER_VERTICAL</flag>
+								<border>5</border>
+							</object>
+							<object class="sizeritem">
+								<object class="wxStaticText" name="ID_STATICTEXT4">
+									<label>Z</label>
+								</object>
+								<flag>wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+								<border>5</border>
+							</object>
+							<object class="sizeritem">
+								<object class="wxTextCtrl" name="ID_POSZ" subclass="UnitCtrl">
+									<style>wxTE_READONLY</style>
+								</object>
+								<flag>wxALIGN_LEFT|wxALIGN_CENTER_VERTICAL</flag>
+								<border>5</border>
+							</object>
+							<object class="sizeritem">
+								<object class="wxStaticText" name="ID_STATICTEXT1">
+									<label>T</label>
+								</object>
+								<flag>wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL</flag>
+								<border>5</border>
+							</object>
+							<object class="sizeritem">
+								<object class="wxTextCtrl" name="ID_TIME" subclass="UnitCtrl" />
+								<flag>wxALIGN_LEFT|wxALIGN_CENTER_VERTICAL</flag>
+								<border>5</border>
+							</object>
+						</object>
+						<flag>wxALL|wxALIGN_CENTER_VERTICAL</flag>
+						<border>5</border>
+						<option>1</option>
+					</object>
+				</object>
+				<flag>wxALL|wxEXPAND</flag>
+				<border>5d</border>
+			</object>
+			<object class="sizeritem">
+				<object class="wxStaticBoxSizer">
+					<label>Status</label>
+					<orient>wxVERTICAL</orient>
+					<object class="sizeritem">
+						<object class="wxPanel" name="ID_STATUSPANEL" />
+						<flag>wxALL|wxEXPAND</flag>
+						<border>3d</border>
+					</object>
+				</object>
+				<flag>wxALL|wxEXPAND</flag>
+				<border>5d</border>
+			</object>
+		</object>
+	</object>
+</resource>

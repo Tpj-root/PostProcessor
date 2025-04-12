@@ -1,0 +1,119 @@
+function OnAbout(event)
+   ctrl = event:GetTextCtrl()
+   ctrl:AppendText("Post processor for Mitsubishi 2512 LC10 laser\n")
+   ctrl:AppendText("\n")
+   ctrl:AppendText("Tools 0-99 use assist gas 1\n")
+   ctrl:AppendText("Tools 100 - 199 use assist gas 2\n")
+   ctrl:AppendText("Tools 200 - 299 use assist gas 3\n")
+   ctrl:AppendText("Uses incremental arcs\n")
+   ctrl:AppendText("Control handles all piercing, power etc\n")
+
+end
+
+
+
+--   created 7/12/09
+
+
+
+function OnInit()
+   lineNumber = 1
+   post.Text("%\n")
+   post.Text("O0000 (" .. fileNameOnly .. ")\n")
+   post.SetCommentChars ("()", "[]")  --make sure ( and ) characters do not appear in system text
+   minArcSize = 0.2 --arcs smaller than this are converted to moves
+   post.Text("( X-MIN-")
+   post.Number(materialX1, "0.0#")
+   post.Text(")\n")
+   post.Text("( Y-MIN-")
+   post.Number(materialY1, "0.0#")
+   post.Text(")\n")
+   post.Text("( X-MAX-")
+   post.Number(materialX2, "0.0#")
+   post.Text(")\n")
+   post.Text("( Y-MAX-")
+   post.Number(materialY2, "0.0#")
+   post.Text(")\n")
+   post.Text("G90 G40\n")
+   post.Text("M66\n")
+   post.Text("#3002=0 (TIMER)\n")
+end
+
+
+function OnFinish()
+   post.Text ("M02\n%\n")
+end
+
+function OnRapid()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   if(endX >= 1e17) then return end
+   post.ModalText ("G00")
+   post.NonModalNumber (" X", endX * scale, "0.0###")
+   post.NonModalNumber (" Y", endY * scale, "0.0###")
+   post.Eol()
+end
+
+function OnMove()
+   if(math.hypot(endX - currentX, endY - currentY) < 0.01) then return end
+   post.ModalText ("G01")
+   post.NonModalNumber (" X", endX * scale, "0.0###")
+   post.NonModalNumber (" Y", endY * scale, "0.0###")
+--   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+function OnArc()
+   if(arcAngle <0) then
+      post.ModalText ("G03")
+   else
+      post.ModalText ("G02")
+   end
+   post.NonModalNumber (" X", endX * scale, "0.0###")
+   post.NonModalNumber (" Y", endY * scale, "0.0###")
+
+   post.Text (" I")
+   post.Number ((arcCentreX - currentX) * scale, "0.0000")
+   post.Text (" J")
+   post.Number ((arcCentreY - currentY) * scale, "0.0000")
+--   post.ModalNumber (" F", feedRate * scale, "0.###")
+   post.Eol()
+end
+
+
+
+function OnPenDown()
+   post.Text ("M198\n")
+   post.Text("#501=104\n")
+   post.Text("M98P9010\n")
+end
+
+
+function OnPenUp()
+   post.Text ("M121\n")
+   post.Text ("M199\n")
+end
+
+function OnNewPart()
+   post.Text("(Part: ",partName,")\n");
+end
+
+function OnNewOperation()
+   post.Text ("(Operation: ", operationName, ")\n")
+   if (feedRate <= 0) then
+      post.Warning("WARNING: Feed rate is zero")
+   end
+end
+
+function OnToolChange()
+   if(tool <100) then
+      post.Text("M32\n")
+   else
+      if(tool < 200) then
+         post.Text("M33\n")
+      else
+         if(tool < 300) then
+            post.Text("M34\n")
+         end
+      end
+   end
+end
